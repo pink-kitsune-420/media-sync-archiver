@@ -103,6 +103,7 @@ and artwork too.
 | **Download again** | Only offered when a show's folder has gone missing: downloads all of it again from scratch. | Yes, everything |
 | **Subscribe** / **Unsubscribe** | In the "…" menu: include a show in Update all, or stop updating it (its files are kept). If its YouTube address isn't known, Subscribe asks for it. | No |
 | **Move to …** | In the "…" menu: moves a show or movie to another library, e.g. onto an external drive. | No |
+| **Folders** | In the "…" menu: put shows in folders of your own to keep a long list tidy (the files don't move). Folders can be collapsed, renamed and removed; the search box finds things inside them too. | No |
 | **Delete leftovers** | Only offered for files left over from a download that didn't finish, when the show itself isn't in a connected library. | No |
 
 Videos you delete yourself **stay deleted**: Update never downloads them again, and the other episodes
@@ -116,7 +117,8 @@ A library is a Shows folder plus a Movies folder. You start with one; add more u
 `/media/you/ExternalDrive/YouTube/Movies`. When you add something, you choose which library it goes in.
 
 - **Unplugged drives are safe.** A library whose folders can't be found is shown as *not connected*:
-  its shows say *drive not connected*, and Update all, Repair all and automatic checks skip them.
+  its shows are collapsed into one line at the bottom of the list (click it to see them), and
+  Update all, Repair all and automatic checks skip them.
   Nothing is downloaded for them and nothing is created where the drive was. Plug the drive in and
   they're back.
 - **Moving between libraries:** use **Move to …** in a show's "…" menu (or

@@ -5,7 +5,14 @@ Version numbers follow [semantic versioning](https://semver.org): MAJOR.MINOR.PA
 
 ## [Unreleased]
 
+### Added
+- **Folders** in the library list: put shows and movies in folders of your own from the "…" menu
+  (nothing moves on disk; stored in `folders.json` next to the settings). Folders collapse, can be
+  renamed and removed, and remember whether they're open.
+- A search box for the library list.
+
 ### Changed
+- Shows on a disconnected drive are collapsed into one line per drive at the bottom of the list.
 - Tags are chosen by relevance: those shared by the most videos of a show, then those the creator
   listed first. A show gets at most 10, and in a show of three or more videos a tag must be on at
   least two of them, so one episode's topic doesn't become a tag of the whole show. Tags that just

@@ -17,6 +17,8 @@
         td .btn-group { white-space: nowrap; }
         .steps li + li { margin-top: .4rem; }
         code { color: #f0a6ca; }
+        .group-row td { background: rgba(255, 255, 255, .035); }
+        #library-search { width: 170px; }
     </style>
 </head>
 <body>
@@ -112,9 +114,12 @@
             <div class="card p-4 h-100">
                 <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
                     <h2 class="h5 mb-0"><i class="fa-solid fa-folder-open text-primary"></i> Library</h2>
-                    <div class="btn-group btn-group-sm">
-                        <button id="sync-all-btn" class="btn btn-outline-success" title="Check every subscribed show for new videos and missing items"><i class="fa-solid fa-rotate"></i> Update all</button>
-                        <button id="repair-all-btn" class="btn btn-outline-warning" title="Verify and repair everything in the library"><i class="fa-solid fa-wrench"></i> Repair all</button>
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                        <input type="search" id="library-search" class="form-control form-control-sm" placeholder="Search…" aria-label="Search the library">
+                        <div class="btn-group btn-group-sm">
+                            <button id="sync-all-btn" class="btn btn-outline-success" title="Check every subscribed show for new videos and missing items"><i class="fa-solid fa-rotate"></i> Update all</button>
+                            <button id="repair-all-btn" class="btn btn-outline-warning" title="Verify and repair everything in the library"><i class="fa-solid fa-wrench"></i> Repair all</button>
+                        </div>
                     </div>
                 </div>
                 <div class="table-responsive">
@@ -461,7 +466,67 @@ async function refreshStatus() {
 
 const MODE_LABELS = {movie: 'Movie', playlist: 'Playlist', years: 'By year'};
 
-function libraryRow(item, showLibrary) {
+let lastLibraryItems = null;
+let allFolders = [];
+
+// Which sections of the library list are open (remembered in this browser only).
+const SECTIONS_KEY = 'mediasync.sections';
+const sectionState = (() => { try { return JSON.parse(localStorage.getItem(SECTIONS_KEY)) || {}; } catch (e) { return {}; } })();
+
+function sectionOpen(key, kind) {
+    return key in sectionState ? sectionState[key] : kind !== 'offline';  // disconnected drives start collapsed
+}
+
+function toggleSection(key, kind) {
+    sectionState[key] = !sectionOpen(key, kind);
+    try { localStorage.setItem(SECTIONS_KEY, JSON.stringify(sectionState)); } catch (e) { /* e.g. a private window */ }
+    renderLibrary(lastLibraryItems);
+}
+
+async function putInFolder(item, folder) {
+    if (await post('/api/action', {action: 'set_folder', name: item.name, folder})) refreshLibrary();
+}
+
+function folderMenu(item) {
+    const items = [el('li', {}, el('h6', {class: 'dropdown-header', text: item.folder ? `In the folder “${item.folder}”` : 'Folder'}))];
+    for (const folder of allFolders.filter((f) => f !== item.folder)) {
+        items.push(el('li', {}, el('button', {class: 'dropdown-item', onclick: () => putInFolder(item, folder)}, icon('fa-folder'), ` Put in ${folder}`)));
+    }
+    items.push(el('li', {}, el('button', {class: 'dropdown-item', onclick: () => {
+        const folder = prompt(`New folder for "${item.name}":`);
+        if (folder && folder.trim()) putInFolder(item, folder.trim());
+    }}, icon('fa-folder-plus'), ' New folder…')));
+    if (item.folder) items.push(el('li', {}, el('button', {class: 'dropdown-item', onclick: () => putInFolder(item, '')}, icon('fa-folder-minus'), ' Take it out of the folder')));
+    return items;
+}
+
+function groupRow(group, open, count) {
+    const offline = group.kind === 'offline';
+    const title = offline ? `${group.title} · not connected · ${count} item${count === 1 ? '' : 's'}` : group.title;
+    const folderIcon = offline ? 'fa-plug text-secondary' : `${open ? 'fa-folder-open' : 'fa-folder'} text-warning`;
+    const menu = group.kind !== 'folder' ? [] : [
+        el('li', {}, el('button', {class: 'dropdown-item', onclick: async () => {
+            const name = prompt('New name for the folder:', group.title);
+            if (name && name.trim() && name.trim() !== group.title
+                && await post('/api/folders/rename', {old: group.title, new: name.trim()})) refreshLibrary();
+        }}, icon('fa-pen'), ' Rename…')),
+        el('li', {}, el('button', {class: 'dropdown-item', onclick: async () => {
+            if (confirm(`Remove the folder "${group.title}"? What's in it stays in the library.`)
+                && await post('/api/folders/rename', {old: group.title, new: ''})) refreshLibrary();
+        }}, icon('fa-folder-minus'), ' Remove folder')),
+    ];
+    return el('tr', {class: 'group-row'}, el('td', {colspan: 3},
+        el('div', {class: 'd-flex justify-content-between align-items-center'},
+            el('button', {type: 'button', class: 'btn btn-link text-reset text-decoration-none p-0 fw-semibold text-start',
+                          'aria-expanded': String(open), onclick: () => toggleSection(group.key, group.kind)},
+                icon(open ? 'fa-chevron-down' : 'fa-chevron-right'), ' ', icon(folderIcon), ` ${title} `,
+                offline ? null : el('span', {class: 'muted fw-normal', text: `(${count})`})),
+            menu.length ? el('div', {class: 'dropdown'},
+                el('button', {class: 'btn btn-sm btn-link text-reset py-0', 'data-bs-toggle': 'dropdown', 'aria-expanded': 'false', title: 'Folder options'}, icon('fa-ellipsis')),
+                el('ul', {class: 'dropdown-menu dropdown-menu-end'}, ...menu)) : null)));
+}
+
+function libraryRow(item, showLibrary, nested) {
     const leftovers = item.location === 'leftovers';  // only files in the downloads folder, no library
     const badges = leftovers ? [] : [el('span', {class: 'badge bg-secondary me-1', text: MODE_LABELS[item.mode] || item.mode})];
     if (showLibrary && !leftovers) badges.push(el('span', {class: 'badge bg-dark border border-info text-info me-1', title: 'Library', text: item.library}));
@@ -511,9 +576,13 @@ function libraryRow(item, showLibrary) {
     if (item.subscribed) menu.push(el('li', {}, el('button', {class: 'dropdown-item', onclick: () => {
         if (confirm(`Unsubscribe from "${item.name}"? Downloaded files are kept.`)) action('unsubscribe')();
     }}, icon('fa-bell-slash'), ' Unsubscribe (keeps the files)')));
+    if (!leftovers) {
+        if (menu.length) menu.push(el('li', {}, el('hr', {class: 'dropdown-divider'})));
+        menu.push(...folderMenu(item));
+    }
 
     return el('tr', {},
-        el('td', {}, el('div', {class: 'fw-semibold', text: item.name}), el('div', {}, ...badges)),
+        el('td', {class: nested ? 'ps-4' : ''}, el('div', {class: 'fw-semibold', text: item.name}), el('div', {}, ...badges)),
         el('td', {class: 'small'}, el('div', {text: item.videos}), el('div', {class: 'muted', text: formatSize(item.size)})),
         el('td', {class: 'text-end'}, el('div', {class: 'btn-group btn-group-sm'},
             main,
@@ -526,11 +595,35 @@ function libraryRow(item, showLibrary) {
 }
 
 function renderLibrary(items) {
+    lastLibraryItems = items;
     $('welcome').classList.toggle('d-none', items.some((i) => i.location !== 'new'));
     const showLibrary = libraries.length > 1;  // with several libraries, every row says which one it is in
-    $('library-body').replaceChildren(...(items.length ? items.map((i) => libraryRow(i, showLibrary))
-        : [el('tr', {}, el('td', {colspan: 3, class: 'muted', text: 'Nothing here yet. Add a URL above.'}))]));
+    const query = $('library-search').value.trim().toLowerCase();
+    const matches = (i) => !query || i.name.toLowerCase().includes(query) || i.folder.toLowerCase().includes(query);
+    const offline = (i) => i.location === 'offline';
+    allFolders = [...new Set(items.map((i) => i.folder).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    // Your folders, then everything else, then one collapsed line per disconnected drive.
+    const groups = [
+        ...allFolders.map((f) => ({key: `folder:${f}`, kind: 'folder', title: f, items: items.filter((i) => !offline(i) && i.folder === f)})),
+        {key: 'loose', kind: 'loose', title: 'Not in a folder', items: items.filter((i) => !offline(i) && !i.folder)},
+        ...[...new Set(items.filter(offline).map((i) => i.library))].map((lib) =>
+            ({key: `offline:${lib}`, kind: 'offline', title: lib, items: items.filter((i) => offline(i) && i.library === lib)})),
+    ];
+    const rows = [];
+    for (const group of groups) {
+        const shown = group.items.filter(matches);
+        if (!shown.length) continue;
+        const headed = group.kind !== 'loose' || allFolders.length > 0;
+        const open = !headed || query !== '' || sectionOpen(group.key, group.kind);
+        if (headed) rows.push(groupRow(group, open, shown.length));
+        if (open) rows.push(...shown.map((i) => libraryRow(i, showLibrary, headed)));
+    }
+    if (!rows.length) rows.push(el('tr', {}, el('td', {colspan: 3, class: 'muted',
+        text: items.length ? `Nothing matches “${query}”.` : 'Nothing here yet. Add a URL above.'})));
+    $('library-body').replaceChildren(...rows);
 }
+
+$('library-search').addEventListener('input', () => { if (lastLibraryItems) renderLibrary(lastLibraryItems); });
 
 async function refreshLibrary() {
     try { renderLibrary(await api('/api/library')); } catch (err) { toast(err.message, true); }

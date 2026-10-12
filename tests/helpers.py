@@ -15,8 +15,8 @@ HAVE_FFMPEG = bool(shutil.which("ffmpeg") and shutil.which("ffprobe"))
 needs_ffmpeg = unittest.skipUnless(HAVE_FFMPEG, "ffmpeg/ffprobe not installed")
 
 
-_PATCHED = ("settings", "CONFIG_DIR", "SUBSCRIPTIONS_FILE", "STATE_FILE", "LOG_DIR", "STAGING_DIR", "SHOWS_DIR",
-            "MOVIES_DIR")
+_PATCHED = ("settings", "CONFIG_DIR", "SUBSCRIPTIONS_FILE", "STATE_FILE", "FOLDERS_FILE", "LOG_DIR", "STAGING_DIR",
+            "SHOWS_DIR", "MOVIES_DIR")
 
 
 class TempLibraryTestCase(unittest.TestCase):
@@ -30,6 +30,7 @@ class TempLibraryTestCase(unittest.TestCase):
         config.SUBSCRIPTIONS_FILE = config.CONFIG_DIR / "subscriptions.json"
         config.STATE_FILE = config.CONFIG_DIR / "state.json"
         config.LOG_DIR = config.CONFIG_DIR / "logs"
+        config.FOLDERS_FILE = config.CONFIG_DIR / "folders.json"
         config.apply(config.Settings(
             libraries=[config.Library("Main", str(self.root / "Videos" / "Shows"), str(self.root / "Videos" / "Movies"))],
             downloads_dir=str(self.root / "downloads"), gentle=False))

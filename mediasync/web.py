@@ -9,6 +9,7 @@ from flask import Flask, jsonify, render_template, request
 
 from . import __version__, config, library, logs
 from .engine import Engine
+from .folders import clean_name, folders
 from .library import Show
 from .subscriptions import Subscription, normalize_limit, normalize_mode, subscriptions
 from .sync import Task, task_for
@@ -96,6 +97,10 @@ def create_app(engine: Engine) -> Flask:
                                               library=entry["library"], archived=entry["location"] == "library"))
             log.info("Subscribed to %s", name)
             return jsonify(message=f"Subscribed: Update all now includes '{name}'.")
+        if kind == "set_folder":
+            folder = clean_name(data.get("folder"))
+            folders.put(name, folder)
+            return jsonify(message=f"Put '{name}' in {folder}." if folder else f"Took '{name}' out of its folder.")
         if kind == "move":
             target = config.get_library(data.get("library"))
             if entry["location"] != "library":
@@ -116,6 +121,16 @@ def create_app(engine: Engine) -> Flask:
             log.info("Deleted the leftover download files of %s", name)
             return jsonify(message=f"Deleted the leftover download files of '{name}'.")
         return _error("Unknown action.")
+
+    @app.post("/api/folders/rename")
+    def rename_folder():
+        data = payload()
+        old, new = clean_name(data.get("old")), clean_name(data.get("new"))
+        if not old:
+            return _error("Which folder?")
+        count = folders.rename(old, new)
+        return jsonify(message=f"Renamed {old} to {new}." if new else
+                       f"Removed the folder {old}; its {count} item{'s' if count != 1 else ''} stay in the library.")
 
     @app.post("/api/sync-all")
     def sync_all():

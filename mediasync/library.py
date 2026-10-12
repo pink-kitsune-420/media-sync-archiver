@@ -26,6 +26,7 @@ from typing import Callable
 from . import artwork, config, media, nfo
 from .logs import DETAIL
 from .metadata import MetadataStore, VideoInfo
+from .folders import folders
 from .subscriptions import subscriptions
 from .util import (
     format_bytes, is_fragment, move_file, remove_empty_dirs, sanitize_filename, truncate_utf8,
@@ -660,6 +661,7 @@ def _join(names: list[str]) -> str:
 def catalog(subs: list) -> list[dict]:
     """Every subscription plus every folder found in a connected library or the staging area."""
     entries: dict[str, dict] = {}
+    assigned = folders.all()
     for sub in subs:
         where = locate(sub.name, sub.mode, sub)
         entries[sub.name] = _catalog_entry(where, sub.url, sub.limit, subscribed=True)
@@ -679,6 +681,8 @@ def catalog(subs: list) -> list[dict]:
                 note += f" It may be on {_join(offline)}, which {'is' if len(offline) == 1 else 'are'} not connected."
             show = Show(folder.name, infer_mode(folder, False))
             entries[folder.name] = _catalog_entry(Location(show, "leftovers", note), None, None, subscribed=False)
+    for entry in entries.values():
+        entry["folder"] = assigned.get(entry["name"], "") if entry["location"] != "leftovers" else ""
     return sorted(entries.values(), key=lambda e: e["name"].lower())
 
 

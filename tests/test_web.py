@@ -108,6 +108,24 @@ class WebTests(TempLibraryTestCase):
         self.assertEqual(self.client.get("/api/status").json["libraries"],
                          [{"name": "Main", "online": True}, {"name": "Drive", "online": True}])
 
+    def test_folders_organize_the_list(self):
+        for name in ("Course", "Other"):
+            placeholder(config.SHOWS_DIR / name / "Season 01" / "S01E01 - One [aaaaaaaaaaa].mkv")
+        folder_of = lambda: {e["name"]: e["folder"] for e in self.client.get("/api/library").json}  # noqa: E731
+        self.assertEqual(folder_of(), {"Course": "", "Other": ""})
+
+        self.client.post("/api/action", json={"action": "set_folder", "name": "Course", "folder": "  Retro   Computers "})
+        self.client.post("/api/action", json={"action": "set_folder", "name": "Other", "folder": "Retro Computers"})
+        self.assertEqual(folder_of(), {"Course": "Retro Computers", "Other": "Retro Computers"})
+        self.assertTrue((config.SHOWS_DIR / "Course").is_dir())  # nothing moves on disk
+
+        self.client.post("/api/folders/rename", json={"old": "Retro Computers", "new": "Retro"})
+        self.client.post("/api/action", json={"action": "set_folder", "name": "Other", "folder": ""})
+        self.assertEqual(folder_of(), {"Course": "Retro", "Other": ""})
+        res = self.client.post("/api/folders/rename", json={"old": "Retro", "new": ""})
+        self.assertIn("1 item stay", res.json["message"])
+        self.assertEqual(folder_of(), {"Course": "", "Other": ""})
+
     def test_bad_urls_are_refused(self):
         self.assertEqual(self.client.post("/api/queue", json={"url": "not a url"}).status_code, 400)
 

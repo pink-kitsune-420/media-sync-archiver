@@ -248,6 +248,7 @@ def save(settings: Settings) -> None:
 settings = Settings()
 SUBSCRIPTIONS_FILE = CONFIG_DIR / "subscriptions.json"
 STATE_FILE = CONFIG_DIR / "state.json"
+FOLDERS_FILE = CONFIG_DIR / "folders.json"
 LOG_DIR = CONFIG_DIR / "logs"
 SHOWS_DIR = Path()   # the default library's folders
 MOVIES_DIR = Path()
