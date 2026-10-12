@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Media Sync Archiver</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <style>
+        body { background: #121212; }
+        .card, .modal-content { background: #1a1a1a; border-color: #333; }
+        .progress { height: 22px; background: #2a2a2a; }
+        .muted { color: #9aa0a6; }
+        .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        #toast-area { position: fixed; right: 1rem; bottom: 1rem; z-index: 1080; }
+        .history-item + .history-item { border-top: 1px solid #2c2c2c; }
+        td .btn-group { white-space: nowrap; }
+        .steps li + li { margin-top: .4rem; }
+        code { color: #f0a6ca; }
+    </style>
+</head>
+<body>
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4 gap-2">
+        <h1 class="h3 mb-0"><i class="fa-solid fa-box-archive text-primary"></i> Media Sync Archiver</h1>
+        <div class="d-flex align-items-center gap-2">
+            <span id="state-badge" class="badge bg-secondary fs-6">Loading…</span>
+            <button class="btn btn-sm btn-outline-light" data-bs-toggle="modal" data-bs-target="#settings-modal" title="Settings">
+                <i class="fa-solid fa-gear"></i><span class="d-none d-sm-inline"> Settings</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Add a URL -->
+    <div class="card p-4 mb-4">
+        <h2 class="h5 mb-3"><i class="fa-solid fa-plus text-success"></i> Add a channel, playlist or video</h2>
+        <form id="add-form" class="row g-3 align-items-end">
+            <div class="col-lg-4">
+                <label for="add-url" class="form-label">YouTube URL</label>
+                <input type="url" class="form-control" id="add-url" placeholder="https://www.youtube.com/…" required>
+            </div>
+            <div class="col-lg-3">
+                <label for="add-name" class="form-label">Folder name <span class="muted small">(optional)</span></label>
+                <input type="text" class="form-control" id="add-name" placeholder="Taken from YouTube if blank">
+            </div>
+            <div class="col-lg-3">
+                <label for="add-mode" class="form-label">Organize as</label>
+                <select id="add-mode" class="form-select"></select>
+            </div>
+            <div class="col-lg-1">
+                <label for="add-limit" class="form-label">Limit</label>
+                <input type="number" min="1" class="form-control" id="add-limit" placeholder="All" title="Only the newest N videos">
+            </div>
+            <div class="col-lg-1">
+                <button type="submit" class="btn btn-success w-100" title="Add and download"><i class="fa-solid fa-download"></i></button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Activity -->
+    <div class="card p-4 mb-4">
+        <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
+            <h2 class="h5 mb-0"><i class="fa-solid fa-gauge-high text-warning"></i> Activity</h2>
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+                <button id="pause-btn" class="btn btn-sm btn-warning"><i class="fa-solid fa-pause"></i> Pause</button>
+                <button id="stop-btn" class="btn btn-sm btn-danger" title="Stop the current download and clear the queue"><i class="fa-solid fa-stop"></i> Stop</button>
+                <label for="speed-select" class="ms-2 small muted">Speed limit</label>
+                <select id="speed-select" class="form-select form-select-sm" style="width: 130px">
+                    <option value="">Unlimited</option>
+                    <option value="500K">500 KB/s</option>
+                    <option value="1M">1 MB/s</option>
+                    <option value="2M">2 MB/s</option>
+                    <option value="5M">5 MB/s</option>
+                    <option value="10M">10 MB/s</option>
+                </select>
+            </div>
+        </div>
+        <div class="fw-semibold truncate" id="task-title">Idle</div>
+        <div class="small muted truncate mb-2" id="task-phase">Nothing is downloading.</div>
+        <div class="progress mb-2">
+            <div id="progress-bar" class="progress-bar progress-bar-striped" style="width: 0%">0%</div>
+        </div>
+        <div class="d-flex flex-wrap gap-4 small">
+            <span><span class="muted">Speed</span> <span id="speed">–</span></span>
+            <span><span class="muted">ETA</span> <span id="eta">–</span></span>
+            <span class="truncate"><span class="muted">Processing</span> <span id="processing">idle</span></span>
+            <span id="next-auto" class="d-none"><span class="muted">Next automatic check</span> <span id="next-auto-time"></span></span>
+        </div>
+    </div>
+
+    <!-- First run help -->
+    <div id="welcome" class="card p-4 mb-4 d-none">
+        <h2 class="h5 mb-3"><i class="fa-solid fa-circle-info text-info"></i> Getting started</h2>
+        <ol class="steps mb-2">
+            <li>Paste the URL of a YouTube <b>playlist</b>, <b>channel</b> or <b>video</b> above and press the download button.
+                Playlists become a TV show in playlist order, channels a TV show with one season per year, single videos a movie.</li>
+            <li>In Kodi, add <code id="welcome-shows"></code> as a <b>TV shows</b> source and <code id="welcome-movies"></code>
+                as a <b>Movies</b> source, both with the scraper <b>Local information only</b>.
+                (Jellyfin: add them as Shows and Movies libraries.)</li>
+            <li>Press <b>Update all</b> now and then (or turn on automatic checks in Settings) to get new videos.</li>
+        </ol>
+        <p class="small muted mb-0">Each video is downloaded once. Later updates only fetch what is new or missing.</p>
+    </div>
+
+    <div class="row g-4">
+        <!-- Library -->
+        <div class="col-lg-8">
+            <div class="card p-4 h-100">
+                <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
+                    <h2 class="h5 mb-0"><i class="fa-solid fa-folder-open text-primary"></i> Library</h2>
+                    <div class="btn-group btn-group-sm">
+                        <button id="sync-all-btn" class="btn btn-outline-success" title="Check every subscribed show for new videos and missing items"><i class="fa-solid fa-rotate"></i> Update all</button>
+                        <button id="repair-all-btn" class="btn btn-outline-warning" title="Verify and repair everything in the library"><i class="fa-solid fa-wrench"></i> Repair all</button>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead><tr><th>Name</th><th>Videos</th><th class="text-end">Actions</th></tr></thead>
+                        <tbody id="library-body"><tr><td colspan="3" class="muted">Loading…</td></tr></tbody>
+                    </table>
+                </div>
+                <p class="small muted mt-3 mb-0">
+                    <b>Update</b> gets new videos and adds missing subtitles, chapters, metadata, artwork and NFO files.
+                    <b>Repair</b> also reads every file to find broken downloads (they are downloaded again) and rebuilds the artwork.
+                    Videos you delete stay deleted; <b>Restore</b> brings them back.
+                </p>
+            </div>
+        </div>
+
+        <!-- Queue + history -->
+        <div class="col-lg-4 d-flex flex-column gap-4">
+            <div class="card p-4">
+                <h2 class="h5 mb-3"><i class="fa-solid fa-list text-warning"></i> Queue (<span id="queue-count">0</span>)</h2>
+                <ul class="list-group list-group-flush" id="queue-list"></ul>
+            </div>
+            <div class="card p-4 flex-grow-1">
+                <h2 class="h5 mb-3"><i class="fa-solid fa-clock-rotate-left text-info"></i> Recent activity</h2>
+                <div id="history-list" class="small"></div>
+            </div>
+        </div>
+    </div>
+
+    <p class="small muted text-center mt-4 mb-0">
+        Media Sync Archiver {{ version }} · downloads each video once and pauses between requests, so please archive responsibly.
+    </p>
+</div>
+
+<!-- Settings -->
+<div class="modal fade" id="settings-modal" tabindex="-1" aria-labelledby="settings-title" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <form class="modal-content" id="settings-form">
+            <div class="modal-header">
+                <h2 class="modal-title h5" id="settings-title"><i class="fa-solid fa-gear"></i> Settings</h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <h3 class="h6 text-primary">Library folders</h3>
+                <div class="row g-3 mb-4">
+                    <div class="col-md-6">
+                        <label class="form-label" for="s-shows_dir">Shows (channels &amp; playlists)</label>
+                        <input class="form-control" id="s-shows_dir" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label" for="s-movies_dir">Movies (single videos)</label>
+                        <input class="form-control" id="s-movies_dir" required>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label" for="s-downloads_dir">Unfinished downloads <span class="muted small">(empty = default)</span></label>
+                        <input class="form-control" id="s-downloads_dir" placeholder="the app's cache folder">
+                    </div>
+                </div>
+
+                <h3 class="h6 text-primary">Downloads</h3>
+                <div class="row g-3 mb-4">
+                    <div class="col-md-4">
+                        <label class="form-label" for="s-max_height">Maximum quality</label>
+                        <select class="form-select" id="s-max_height">
+                            <option value="360">360p</option><option value="480">480p</option><option value="720">720p</option>
+                            <option value="1080">1080p</option><option value="1440">1440p</option><option value="2160">2160p (4K)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="s-subtitle_languages">Subtitle languages</label>
+                        <input class="form-control" id="s-subtitle_languages" placeholder="en, de">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="s-auto_update_hours">Check for new videos</label>
+                        <select class="form-select" id="s-auto_update_hours">
+                            <option value="0">Only when I ask</option><option value="6">Every 6 hours</option>
+                            <option value="12">Every 12 hours</option><option value="24">Once a day</option>
+                            <option value="168">Once a week</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" role="switch" id="s-gentle">
+                            <label class="form-check-label" for="s-gentle">Gentle mode: pause between requests and downloads (recommended, keeps YouTube from blocking you)</label>
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="h6 text-primary">Dashboard</h3>
+                <div class="row g-3 mb-4">
+                    <div class="col-md-8">
+                        <label class="form-label" for="s-host">Who can open this page</label>
+                        <select class="form-select" id="s-host">
+                            <option value="127.0.0.1">Only this computer</option>
+                            <option value="0.0.0.0">Any device on my home network (no password!)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="s-port">Port</label>
+                        <input class="form-control" id="s-port" type="number" min="1" max="65535">
+                    </div>
+                </div>
+
+                <h3 class="h6 text-primary">Kodi <span class="muted small fw-normal">(optional: rescan Kodi's library after downloads)</span></h3>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label" for="s-kodi_url">JSON-RPC address</label>
+                        <input class="form-control" id="s-kodi_url" placeholder="http://localhost:8080/jsonrpc">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label" for="s-kodi_username">User</label>
+                        <input class="form-control" id="s-kodi_username">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label" for="s-kodi_password">Password</label>
+                        <input class="form-control" id="s-kodi_password" type="password" autocomplete="off">
+                    </div>
+                    <div class="col-12 small muted">Enable it in Kodi under Settings › Services › Control › "Allow remote control via HTTP".</div>
+                </div>
+            </div>
+            <div class="modal-footer justify-content-between">
+                <span class="small muted truncate" id="settings-file"></span>
+                <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="toast-area"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+let libraryVersion = null;
+let paused = false;
+
+function el(tag, attrs = {}, ...children) {
+    const node = document.createElement(tag);
+    for (const [key, value] of Object.entries(attrs)) {
+        if (key === 'class') node.className = value;
+        else if (key === 'text') node.textContent = value;
+        else if (key.startsWith('on')) node.addEventListener(key.slice(2), value);
+        else if (value !== false && value != null) node.setAttribute(key, value);
+    }
+    for (const child of children) if (child != null) node.append(child);
+    return node;
+}
+
+function icon(name) { return el('i', {class: `fa-solid ${name}`}); }
+
+function toast(message, isError = false) {
+    const node = el('div', {class: `alert ${isError ? 'alert-danger' : 'alert-success'} shadow py-2 mb-2`, text: message});
+    $('toast-area').append(node);
+    setTimeout(() => node.remove(), 6000);
+}
+
+async function api(path, body) {
+    const options = body === undefined ? {} : {
+        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body),
+    };
+    const res = await fetch(path, options);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+    return data;
+}
+
+async function post(path, body) {
+    try {
+        const data = await api(path, body);
+        if (data.message && !['pause', 'resume', 'stop'].includes(data.message)) toast(data.message);
+        refreshStatus();
+        return data;
+    } catch (err) {
+        toast(err.message, true);
+    }
+}
+
+function formatSize(bytes) {
+    if (!bytes) return '';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let i = 0;
+    while (bytes >= 1024 && i < units.length - 1) { bytes /= 1024; i++; }
+    return `${bytes.toFixed(i > 2 ? 1 : 0)} ${units[i]}`;
+}
+
+// ---------------------------------------------------------------- add form
+
+const MODE_CHOICES = {
+    movie: [['movie', 'Movie (single video)']],
+    playlist: [['playlist', 'Show: one season, playlist order'], ['years', 'Show: one season per year']],
+    channel: [['years', 'Show: one season per year']],
+    any: [['movie', 'Movie (single video)'], ['playlist', 'Show: one season, playlist order'], ['years', 'Show: one season per year']],
+};
+
+function urlKind(url) {
+    if (!url) return 'any';
+    if (/[?&]list=/.test(url)) return 'playlist';
+    if (/youtube\.com\/(@|channel\/|user\/|c\/)/.test(url)) return 'channel';
+    return 'movie';
+}
+
+function setModeChoices(kind) {
+    $('add-mode').replaceChildren(...MODE_CHOICES[kind].map(([value, label]) => el('option', {value, text: label})));
+}
+
+setModeChoices('any');
+$('add-url').addEventListener('input', (e) => setModeChoices(urlKind(e.target.value.trim())));
+
+$('add-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const limit = parseInt($('add-limit').value, 10);
+    const data = await post('/api/queue', {
+        url: $('add-url').value.trim(),
+        name: $('add-name').value.trim(),
+        mode: $('add-mode').value,
+        limit: Number.isFinite(limit) ? limit : null,
+    });
+    if (data) { e.target.reset(); setModeChoices('any'); }
+});
+
+// ---------------------------------------------------------------- activity
+
+$('pause-btn').addEventListener('click', () => post('/api/control', {action: paused ? 'resume' : 'pause'}));
+$('stop-btn').addEventListener('click', () => {
+    if (confirm('Stop the current download and clear the queue? Finished videos are still processed.')) {
+        post('/api/control', {action: 'stop'});
+    }
+});
+$('speed-select').addEventListener('change', (e) => post('/api/speed', {limit: e.target.value || null}));
+$('sync-all-btn').addEventListener('click', () => post('/api/sync-all', {action: 'update'}));
+$('repair-all-btn').addEventListener('click', () => {
+    if (confirm('Repair everything in the library? Every video file is read in full to check it, which can take a while.')) {
+        post('/api/sync-all', {action: 'repair'});
+    }
+});
+
+const VERBS = {update: 'Updating', repair: 'Repairing', restore: 'Restoring'};
+
+function renderStatus(s) {
+    paused = s.state === 'paused';
+    const badge = $('state-badge');
+    badge.textContent = s.state.toUpperCase();
+    badge.className = 'badge fs-6 ' + ({running: 'bg-success', paused: 'bg-warning text-dark'}[s.state] || 'bg-secondary');
+    $('pause-btn').replaceChildren(icon(paused ? 'fa-play' : 'fa-pause'), paused ? ' Resume' : ' Pause');
+    $('pause-btn').className = `btn btn-sm ${paused ? 'btn-success' : 'btn-warning'}`;
+    if (document.activeElement !== $('speed-select')) $('speed-select').value = s.speed_limit || '';
+    $('next-auto').classList.toggle('d-none', !s.next_auto_update);
+    $('next-auto-time').textContent = s.next_auto_update || '';
+
+    const c = s.current;
+    const bar = $('progress-bar');
+    if (c) {
+        $('task-title').textContent = `${VERBS[c.kind] || c.kind}: ${c.name}`;
+        const position = c.total ? ` (${c.done || 0} of ${c.total})` : (c.done ? ` (#${c.done})` : '');
+        const phase = c.video ? `${c.phase} “${c.video}”${position}` : `${c.phase || 'Starting'}${position}`;
+        $('task-phase').textContent = c.detail ? `${phase} · ${c.detail}` : phase;
+        const pct = c.percent != null ? c.percent : (c.total ? (c.done || 0) / c.total * 100 : 0);
+        bar.style.width = `${pct}%`;
+        bar.textContent = `${pct.toFixed(1)}%`;
+        bar.classList.toggle('progress-bar-animated', !paused);
+        $('speed').textContent = c.speed || '–';
+        $('eta').textContent = c.eta || '–';
+    } else {
+        $('task-title').textContent = paused ? 'Paused' : 'Idle';
+        $('task-phase').textContent = s.queue.length ? 'Waiting to start the next task…' : 'Nothing is downloading.';
+        bar.style.width = '0%';
+        bar.textContent = '0%';
+        $('speed').textContent = '–';
+        $('eta').textContent = '–';
+    }
+    const p = s.processing;
+    $('processing').textContent = p.current ? `${p.current}${p.pending ? ` (+${p.pending} waiting)` : ''}` : 'idle';
+
+    $('queue-count').textContent = s.queue.length;
+    $('queue-list').replaceChildren(...(s.queue.length ? s.queue.map((t) => el('li',
+        {class: 'list-group-item bg-transparent d-flex justify-content-between align-items-center px-0'},
+        el('span', {class: 'truncate'}, icon('fa-clock text-warning'), ` ${t.name} `, el('span', {class: 'badge bg-secondary', text: t.kind})),
+        el('button', {class: 'btn btn-sm btn-outline-secondary', title: 'Remove from queue',
+            onclick: () => post('/api/queue/remove', {id: t.id})}, icon('fa-xmark')),
+    )) : [el('li', {class: 'list-group-item bg-transparent muted px-0', text: 'Queue is empty.'})]));
+
+    const statusIcon = {ok: 'fa-circle-check text-success', warning: 'fa-triangle-exclamation text-warning',
+                        error: 'fa-circle-xmark text-danger', cancelled: 'fa-ban text-secondary'};
+    $('history-list').replaceChildren(...(s.history.length ? s.history.map((h) => el('div', {class: 'history-item py-2'},
+        el('div', {class: 'd-flex justify-content-between'},
+            el('span', {class: 'truncate'}, icon(statusIcon[h.status] || 'fa-circle'), ` ${h.name}`),
+            el('span', {class: 'muted ms-2', text: `${h.kind} ${h.finished}`})),
+        el('div', {class: 'muted', text: h.summary}),
+        h.errors.length ? el('details', {}, el('summary', {class: 'muted', text: 'Details'}),
+            el('ul', {class: 'mb-0 ps-3'}, ...h.errors.map((err) => el('li', {text: err})))) : null,
+    )) : [el('div', {class: 'muted', text: 'Nothing has run yet.'})]));
+
+    if (s.library_version !== libraryVersion) {
+        libraryVersion = s.library_version;
+        refreshLibrary();
+    }
+}
+
+async function refreshStatus() {
+    try { renderStatus(await api('/api/status')); } catch (err) { $('state-badge').textContent = 'OFFLINE'; }
+}
+
+// ---------------------------------------------------------------- library
+
+const MODE_LABELS = {movie: 'Movie', playlist: 'Playlist', years: 'By year'};
+
+function libraryRow(item) {
+    const badges = [el('span', {class: 'badge bg-secondary me-1', text: MODE_LABELS[item.mode] || item.mode})];
+    if (!item.subscribed) badges.push(el('span', {class: 'badge bg-dark border me-1', title: 'Not subscribed, so "Update all" skips it', text: 'not subscribed'}));
+    if (item.location === 'missing') badges.push(el('span', {class: 'badge bg-info text-dark me-1', text: 'not downloaded yet'}));
+    if (item.partial) badges.push(el('span', {class: 'badge bg-warning text-dark me-1', title: 'Unfinished downloads resume on the next update', text: 'unfinished download'}));
+    if (item.deleted) badges.push(el('span', {class: 'badge bg-dark border border-warning text-warning me-1', title: 'Videos you deleted are not downloaded again. Use Restore to get them back.', text: `${item.deleted} deleted`}));
+    if (!item.url) badges.push(el('span', {class: 'badge bg-danger me-1', title: 'Source URL unknown: existing files can be checked but no new videos downloaded', text: 'no URL'}));
+
+    const action = (kind) => () => post('/api/action', {action: kind, name: item.name});
+    const missing = item.location === 'missing';
+    const menu = [];
+    if (item.deleted) menu.push(el('li', {}, el('button', {class: 'dropdown-item', onclick: action('restore')}, icon('fa-trash-arrow-up'), ` Restore ${item.deleted} deleted video${item.deleted > 1 ? 's' : ''}`)));
+    if (item.subscribed) menu.push(el('li', {}, el('button', {class: 'dropdown-item', onclick: () => {
+        if (confirm(`Unsubscribe from "${item.name}"? Downloaded files are kept.`)) action('unsubscribe')();
+    }}, icon('fa-bell-slash'), ' Unsubscribe (keeps the files)')));
+
+    return el('tr', {},
+        el('td', {}, el('div', {class: 'fw-semibold', text: item.name}), el('div', {}, ...badges)),
+        el('td', {class: 'small'}, el('div', {text: item.videos}), el('div', {class: 'muted', text: formatSize(item.size)})),
+        el('td', {class: 'text-end'}, el('div', {class: 'btn-group btn-group-sm'},
+            el('button', {class: 'btn btn-outline-success', title: missing ? 'Download it now' : 'Get new videos and fill in anything missing', onclick: action('update')},
+                icon(missing ? 'fa-download' : 'fa-rotate'), missing ? ' Download' : ' Update'),
+            missing ? null : el('button', {class: 'btn btn-outline-warning', title: 'Verify every file, re-download broken ones, rebuild NFOs and artwork', onclick: action('repair')},
+                icon('fa-wrench'), ' Repair'),
+            menu.length ? el('button', {class: 'btn btn-outline-secondary dropdown-toggle', 'data-bs-toggle': 'dropdown', 'aria-expanded': 'false', title: 'More'}, icon('fa-ellipsis')) : null,
+            menu.length ? el('ul', {class: 'dropdown-menu dropdown-menu-end'}, ...menu) : null,
+        )),
+    );
+}
+
+function renderLibrary(items) {
+    $('welcome').classList.toggle('d-none', items.some((i) => i.location !== 'missing'));
+    $('library-body').replaceChildren(...(items.length ? items.map(libraryRow)
+        : [el('tr', {}, el('td', {colspan: 3, class: 'muted', text: 'Nothing here yet. Add a URL above.'}))]));
+}
+
+async function refreshLibrary() {
+    try { renderLibrary(await api('/api/library')); } catch (err) { toast(err.message, true); }
+}
+
+// ---------------------------------------------------------------- settings
+
+const SETTING_FIELDS = ['shows_dir', 'movies_dir', 'downloads_dir', 'max_height', 'subtitle_languages',
+                        'auto_update_hours', 'gentle', 'host', 'port', 'kodi_url', 'kodi_username', 'kodi_password'];
+
+function ensureOption(select, value) {
+    if (![...select.options].some((o) => o.value === String(value))) {
+        select.append(el('option', {value: String(value), text: String(value)}));
+    }
+}
+
+async function loadSettings() {
+    const data = await api('/api/settings');
+    const s = data.settings;
+    for (const name of SETTING_FIELDS) {
+        const input = $(`s-${name}`);
+        if (input.type === 'checkbox') input.checked = !!s[name];
+        else if (Array.isArray(s[name])) input.value = s[name].join(', ');
+        else {
+            if (input.tagName === 'SELECT') ensureOption(input, s[name]);
+            input.value = s[name];
+        }
+    }
+    $('settings-file').textContent = `Saved in ${data.config_file}`;
+    $('welcome-shows').textContent = s.shows_dir;
+    $('welcome-movies').textContent = s.movies_dir;
+}
+
+$('settings-modal').addEventListener('show.bs.modal', () => loadSettings().catch((err) => toast(err.message, true)));
+
+$('settings-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = {};
+    for (const name of SETTING_FIELDS) {
+        const input = $(`s-${name}`);
+        body[name] = input.type === 'checkbox' ? input.checked : input.value;
+    }
+    const data = await post('/api/settings', body);
+    if (data) {
+        bootstrap.Modal.getInstance($('settings-modal')).hide();
+        loadSettings();
+        refreshLibrary();
+    }
+});
+
+loadSettings().catch(() => {});
+refreshStatus();
+setInterval(refreshStatus, 1000);
+</script>
+</body>
+</html>

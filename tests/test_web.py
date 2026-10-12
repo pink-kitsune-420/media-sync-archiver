@@ -1,0 +1,73 @@
+"""The dashboard API and the command line, with the engine's threads switched off."""
+import contextlib
+import io
+
+from mediasync import cli, config
+from mediasync.engine import Engine
+from mediasync.subscriptions import Subscription, subscriptions
+from mediasync.web import create_app
+
+from .helpers import TempLibraryTestCase, info, placeholder, write_info
+
+
+class WebTests(TempLibraryTestCase):
+    def setUp(self):
+        super().setUp()
+        self.engine = Engine(autostart=False)
+        self.client = create_app(self.engine).test_client()
+
+    def test_settings_can_be_read_and_saved(self):
+        data = self.client.get("/api/settings").json
+        self.assertEqual(data["settings"]["shows_dir"], config.settings.shows_dir)
+
+        res = self.client.post("/api/settings", json={**data["settings"], "max_height": "720", "port": 9999})
+        self.assertEqual(res.status_code, 200, res.json)
+        self.assertIn("Restart", res.json["message"])
+        self.assertEqual(config.settings.max_height, 720)
+        self.assertIn("max_height = 720", config.config_file().read_text())
+
+        bad = self.client.post("/api/settings", json={**data["settings"], "auto_update_hours": 1})
+        self.assertEqual(bad.status_code, 400)
+
+    def test_restore_action_is_queued(self):
+        show_dir = config.SHOWS_DIR / "Course"
+        write_info(show_dir / ".metadata", info("aaaaaaaaaaa", "One", index=1))
+        placeholder(show_dir / "Season 01" / "S01E02 - Two [bbbbbbbbbbb].mkv")
+        library_entry = next(e for e in self.client.get("/api/library").json if e["name"] == "Course")
+        self.assertEqual(library_entry["deleted"], 1)
+
+        res = self.client.post("/api/action", json={"action": "restore", "name": "Course"})
+        self.assertEqual(res.status_code, 200, res.json)
+        self.assertEqual([t["kind"] for t in self.engine.status()["queue"]], ["restore"])
+
+    def test_bad_urls_are_refused(self):
+        self.assertEqual(self.client.post("/api/queue", json={"url": "not a url"}).status_code, 400)
+
+
+class CliTests(TempLibraryTestCase):
+    def test_parser(self):
+        args = cli.build_parser().parse_args(["add", "https://youtu.be/x", "--as", "movie", "--limit", "3"])
+        self.assertEqual((args.url, args.mode, args.limit), ("https://youtu.be/x", "movie", 3))
+
+    def test_serve_is_the_default_command(self):
+        self.assertEqual(cli.normalize_argv([]), ["serve"])
+        self.assertEqual(cli.normalize_argv(["--no-browser", "--port", "9"]), ["serve", "--no-browser", "--port", "9"])
+        self.assertEqual(cli.normalize_argv(["update", "X"]), ["update", "X"])
+        args = cli.build_parser().parse_args(cli.normalize_argv(["--no-browser"]))
+        self.assertTrue(args.no_browser)
+        self.assertEqual(set(cli.COMMANDS), set(cli.build_parser()._subparsers._group_actions[0].choices))
+
+    def test_guess_mode(self):
+        self.assertEqual(cli.guess_mode("https://www.youtube.com/playlist?list=PL1"), "playlist")
+        self.assertEqual(cli.guess_mode("https://www.youtube.com/@chan"), "years")
+        self.assertEqual(cli.guess_mode("https://www.youtube.com/watch?v=abc"), "movie")
+
+    def test_list(self):
+        subscriptions.upsert(Subscription("Wanted", "https://www.youtube.com/@x", "years"))
+        placeholder(config.MOVIES_DIR / "A Movie" / "A Movie [aaaaaaaaaaa].mkv", size=4096)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            cli.cmd_list(None)
+        text = out.getvalue()
+        self.assertIn("A Movie", text)
+        self.assertIn("not downloaded", text)

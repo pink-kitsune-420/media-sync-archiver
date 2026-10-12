@@ -1,0 +1,10 @@
+__pycache__/
+*.egg-info/
+build/
+dist/
+.venv/
+
+# personal data from older versions (now kept in the user config folder)
+channels.json
+downloads/
+.backup/

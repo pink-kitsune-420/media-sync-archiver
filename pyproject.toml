@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "media-sync-archiver"
+description = "Keep YouTube channels, playlists and videos as an offline Kodi/Jellyfin library."
+readme = "README.md"
+license = {text = "MIT"}
+authors = [{name = "pink-kitsune-420"}]
+requires-python = ">=3.10"
+dependencies = [
+    "flask>=3.0",
+    "Pillow>=10.1",
+    "yt-dlp[default]>=2025.10.22",
+    "tomli>=2.0; python_version < '3.11'",
+]
+keywords = ["youtube", "kodi", "jellyfin", "archive", "offline", "yt-dlp", "nfo"]
+classifiers = [
+    "Environment :: Web Environment",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Video",
+]
+dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://github.com/pink-kitsune-420/media-sync-archiver"
+
+[project.scripts]
+mediasync = "mediasync.cli:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "mediasync.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["mediasync*"]
+
+[tool.setuptools.package-data]
+mediasync = ["templates/*.html"]
