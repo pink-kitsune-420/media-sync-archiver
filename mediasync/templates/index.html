@@ -517,7 +517,7 @@ function libraryCard(lib, online) {
         el('label', {class: 'form-label small mb-1', text: label}),
         el('input', {class: `form-control form-control-sm ${cls}`, value, placeholder, required: '', 'aria-label': label}));
     const card = el('div', {class: 'library-card border rounded p-3'}, el('div', {class: 'row g-2'},
-        field('Name', 'lib-name', lib.name, 'e.g. MediaDrive'),
+        field('Name', 'lib-name', lib.name, 'e.g. External Drive'),
         el('div', {class: 'col-md-7 d-flex align-items-end justify-content-end gap-2'},
             el('span', {class: `badge ${badgeClass}`, text: badgeText}),
             online === false ? el('button', {type: 'button', class: 'btn btn-sm btn-outline-light',

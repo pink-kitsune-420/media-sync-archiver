@@ -109,8 +109,8 @@ their old place.
 ## Libraries and external drives
 
 A library is a Shows folder plus a Movies folder. You start with one; add more under
-**Settings › Libraries**, e.g. *MediaDrive* with `/media/you/MediaDrive/YouTube/Shows` and
-`/media/you/MediaDrive/YouTube/Movies`. When you add something, you choose which library it goes in.
+**Settings › Libraries**, e.g. *External Drive* with `/media/you/ExternalDrive/YouTube/Shows` and
+`/media/you/ExternalDrive/YouTube/Movies`. When you add something, you choose which library it goes in.
 
 - **Unplugged drives are safe.** A library whose folders can't be found is shown as *not connected*:
   its shows say *drive not connected*, and Update all, Repair all and automatic checks skip them.
