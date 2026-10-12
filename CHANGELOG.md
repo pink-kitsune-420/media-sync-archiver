@@ -3,7 +3,10 @@
 All notable changes to Media Sync Archiver are listed here.
 Version numbers follow [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 
-## [Unreleased]
+## [1.1.0] - 2026-10-12
+
+Several libraries, and external drives that aren't always plugged in. Settings, subscriptions and
+libraries from 1.0.x keep working: your folders become the first library.
 
 ### Added
 - **Several libraries** (Settings › Libraries), for example one on this computer and one on an
@@ -26,8 +29,9 @@ Version numbers follow [semantic versioning](https://semver.org): MAJOR.MINOR.PA
 - Unsubscribing and other changes to subscriptions are written to the log.
 
 ### Changed
-- Settings from 1.0 become the first library, called "This computer". Subscriptions from 1.0 count
-  as downloaded, so a show whose folder is away is never downloaded again by accident.
+- Settings from 1.0.x become the first library, called "This computer". Subscriptions from 1.0.x
+  count as downloaded, so a show whose folder is away is never downloaded again by accident.
+- With more than one library, every row in the library list shows which library it is in.
 
 ### Fixed
 - Shows from older versions without a `playlist.info.json` no longer show "no URL": the address
