@@ -15,6 +15,9 @@ Version numbers follow [semantic versioning](https://semver.org): MAJOR.MINOR.PA
   failing (and being reported) on every update.
 - Dashboard: an activity entry's Details stay open until you close them, and the library list is
   refreshed right after unsubscribing or queueing an action.
+- Playlist episodes you delete keep their number, so the episodes after them are no longer
+  renumbered (Kodi keeps their watched status), and Restore puts a video back in its old place.
+  Videos that were never downloadable, such as private ones, still take no number.
 - Task summaries count renamed files ("file names ×N"); the list of renames is in the log file.
 - Fixed: opening the library list while files were being renamed could fail with an error.
 - The log says "Started downloading …" instead of a misleading 0% progress line.

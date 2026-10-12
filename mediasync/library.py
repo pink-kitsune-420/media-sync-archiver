@@ -247,11 +247,11 @@ def _upload_day(video: LibraryVideo, info: VideoInfo | None) -> str:
         return datetime.now().strftime("%Y%m%d")
 
 
-def _playlist_position(video: LibraryVideo, info: VideoInfo | None) -> int:
+def _playlist_position(video: LibraryVideo | None, info: VideoInfo | None) -> int:
     """Playlist index from the metadata, else the episode number the file already has."""
     if info and info.playlist_index is not None:
         return info.playlist_index
-    m = _EPISODE_RE.search(video.path.name)
+    m = _EPISODE_RE.search(video.path.name) if video else None
     return int(m.group(1)) if m else 999999
 
 
@@ -286,9 +286,17 @@ def plan_layout(show: Show, videos: list[LibraryVideo], store: MetadataStore) ->
                                             int(year), int(f"{month_day}{n:02d}")))
         return placements
 
-    ordered = sorted(entries, key=lambda e: (
-        _playlist_position(*e), e[1].upload_date if e[1] and e[1].upload_date else "99999999", e[0].id))
-    return [placement(v, info, "Season 01", f"S01E{n:02d}", 1, n) for n, (v, info) in enumerate(ordered, start=1)]
+    # Episodes follow the playlist order. Videos you deleted keep their number (so later episodes are
+    # not renumbered, and Restore puts a video back in its old place); videos the archive never had,
+    # such as private ones, take no number.
+    present = {v.id for v, _ in entries}
+    deleted = [(None, info) for vid, info in store.videos.items()
+               if vid not in present and info.playlist_index is not None]
+    ordered = sorted(entries + deleted, key=lambda e: (
+        _playlist_position(*e), e[1].upload_date if e[1] and e[1].upload_date else "99999999",
+        e[0].id if e[0] else e[1].id))
+    return [placement(v, info, "Season 01", f"S01E{n:02d}", 1, n)
+            for n, (v, info) in enumerate(ordered, start=1) if v]
 
 
 def _dedupe(videos: list[LibraryVideo], preferred: set[Path]) -> tuple[list[LibraryVideo], list[LibraryVideo]]:

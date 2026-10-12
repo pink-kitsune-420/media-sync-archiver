@@ -172,17 +172,20 @@ class SyncTests(TempLibraryTestCase):
         self.run_and_wait(Task("update", url=url))
         show = Show("Resolved Show", "playlist")
         first = show.library_dir / "Season 01" / "S01E01 - First [aaaaaaaaaaa].mkv"
+        second = show.library_dir / "Season 01" / "S01E02 - Second [bbbbbbbbbbb].mkv"
         first.unlink()
 
         update = self.run_and_wait(Task("update", url=url))
         self.assertEqual(update.downloaded, 0)
         self.assertFalse(first.exists(), "Update must not download a deleted video again")
         self.assertIn("aaaaaaaaaaa", FakeSession.calls[-1][1])
+        self.assertTrue(second.exists(), "the deleted episode keeps its number, so later ones are not renumbered")
 
         restore = self.run_and_wait(Task("restore", url=url, name="Resolved Show"))
         self.assertEqual(restore.downloaded, 1)
-        self.assertTrue(restore.summary().startswith("1 restored video"), restore.summary())
+        self.assertEqual(restore.summary(), "1 restored video")
         self.assertTrue(first.exists())
+        self.assertTrue(second.exists())
 
     def test_channel_updates_check_the_feed_first(self):
         url = "https://www.youtube.com/@somechannel"

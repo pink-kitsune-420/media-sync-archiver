@@ -97,8 +97,9 @@ and artwork too.
 | **Update all** | Update for every subscribed show, one at a time (movies are skipped: they never get new videos). | Same as Update, for each show |
 | **Repair all** | Repair for everything in the library, including items you've unsubscribed from. | Same as Repair, for each item |
 
-Videos you delete yourself **stay deleted**: Update never downloads them again. The library list shows
-how many were deleted, and Restore brings them back.
+Videos you delete yourself **stay deleted**: Update never downloads them again, and the other episodes
+keep their numbers. The library list shows how many were deleted, and Restore brings them back in
+their old place.
 
 ## Command line
 
@@ -136,6 +137,8 @@ Movies/
     Building a Cabin in 30 Days [qRs...].mkv  (+ .nfo, -poster.jpg, -fanart.jpg)
 ```
 
+- Playlist episodes are numbered in playlist order. Videos you deleted keep their number; videos that
+  were never downloadable (private or deleted on YouTube) don't get one.
 - Channel episodes are numbered by upload date, so numbers never change when new or older videos are
   added later (Kodi keeps your watched status).
 - The `[id]` in each file name is the YouTube video ID; it's how the app recognises a video.

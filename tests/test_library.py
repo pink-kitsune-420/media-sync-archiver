@@ -64,6 +64,22 @@ class OrganizeTests(TempLibraryTestCase):
         second = library.organize(show)
         self.assertFalse(second.changed, "organize must be idempotent")
 
+    def test_deleted_episodes_keep_their_number_but_never_archived_ones_take_none(self):
+        show = Show("Course", "playlist")
+        # playlist positions 1-4; position 2 was private, so the archive never had it
+        for vid, title, index in (("aaaaaaaaaaa", "One", 1), ("ccccccccccc", "Three", 3), ("ddddddddddd", "Four", 4)):
+            write_info(show.metadata_dir, info(vid, title, index=index))
+            placeholder(show.library_dir / f"{title} [{vid}].mkv")
+        library.organize(show)
+        season = show.library_dir / "Season 01"
+        self.assertEqual(sorted(p.name for p in season.glob("*.mkv")), [
+            "S01E01 - One [aaaaaaaaaaa].mkv", "S01E02 - Three [ccccccccccc].mkv", "S01E03 - Four [ddddddddddd].mkv"])
+
+        (season / "S01E02 - Three [ccccccccccc].mkv").unlink()  # deleted by the user
+        result = library.organize(show)
+        self.assertEqual(result.renamed, 0)
+        self.assertTrue((season / "S01E03 - Four [ddddddddddd].mkv").exists())
+
     def test_years_mode_numbers_episodes_by_upload_date(self):
         show = Show("Channel", "years")
         write_info(show.metadata_dir, info("aaaaaaaaaaa", "Newer", upload_date="20220105"))
