@@ -29,6 +29,11 @@ class TagTests(unittest.TestCase):
                      "8-bit", "programming", "beginner", "brandon james")
         text = nfo.movie_nfo(info, video_id="aaaaaaaaaaa", title="Coding Snake")
         tags = [line.strip()[5:-6] for line in text.splitlines() if line.strip().startswith("<tag>")]
-        # "Snake" only repeats a word of the title; "Brandon James" is the channel
-        self.assertEqual(tags, ["Commodore 64", "C64", "Basic", "Retro Computing", "Tutorial", "Game", "8-Bit",
-                                "Programming"])
+        self.assertEqual(tags, ["Commodore 64", "C64", "Basic", "Retro Computing", "Tutorial", "Snake", "Game", "8-Bit"])
+
+    def test_hashtags_count_as_tags(self):
+        info = VideoInfo("PxZGoiWvA4A", title="6502 Assembly Language: Getting Started", channel="Some Channel",
+                         description="Intro.\nWikipedia: https://en.wikipedia.org/wiki/MOS_6502#History\n"
+                                     "#Assembly_language #6502 #Assembly #PixelArt")
+        self.assertEqual(nfo.pick_tags([info], info.title, info.channel),
+                         ["Assembly language", "6502", "Assembly", "Pixel Art"])

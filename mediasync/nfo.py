@@ -79,20 +79,30 @@ def tvshow_nfo(title: str, playlist: PlaylistInfo | None, videos: list[VideoInfo
     return _render(root)
 
 
+_HASHTAG_RE = re.compile(r"(?:^|\s)#(\w+)")  # "#pixelart", not the "#History" of a link
+
+
+def _hashtags(video: VideoInfo) -> list[str]:
+    """Hashtags in the title and description: many creators use these instead of YouTube's tags."""
+    found = _HASHTAG_RE.findall(f"{video.title}\n{video.description}")[:10]
+    return [re.sub(r"(?<=[a-z])(?=[A-Z])", " ", tag.replace("_", " ")) for tag in found]  # PixelArt -> Pixel Art
+
+
 def pick_tags(videos: list[VideoInfo], show_name: str, channel: str, limit: int = 10) -> list[str]:
-    """The most relevant YouTube tags: those shared by the most videos, then those their creator
-    listed first (the most important ones usually come first). In a show of three or more videos a
-    tag must be on at least two of them (and on a tenth), so one episode's topic doesn't become a
-    tag of the whole show. Tags that only repeat the show or channel name are left out."""
-    ignore = {w for w in re.findall(r"\w+", f"{show_name} {channel}".lower())} | {"video", "videos", "youtube"}
+    """The most relevant tags (YouTube tags, then hashtags): those shared by the most videos, then
+    those their creator listed first (the most important ones usually come first). In a show of
+    three or more videos a tag must be on at least two of them (and on a tenth), so one episode's
+    topic doesn't become a tag of the whole show. Tags that are just the show's or the channel's
+    name are left out."""
+    ignore = {show_name.lower().strip(), channel.lower().strip(), "video", "videos", "youtube", "shorts"}
+    ignore |= set(re.findall(r"\w+", channel.lower()))  # e.g. "brandon" for Brandon James
     ignore.add("".join(w[0] for w in show_name.split() if w).lower())  # initials, e.g. "pa101"
-    ignore |= {show_name.lower().strip(), channel.lower().strip()}
     counts: dict[str, int] = {}
     positions: dict[str, list[int]] = {}
     spelling: dict[str, str] = {}
     for video in videos:
         seen = set()
-        for position, tag in enumerate(t.strip() for t in video.tags):
+        for position, tag in enumerate(t.strip() for t in [*video.tags, *_hashtags(video)]):
             key = tag.lower().rstrip("s") if len(tag) > 3 else tag.lower()  # "sprite" = "sprites"
             if not tag or key in seen or len(tag) <= 2 or len(tag.split()) > 3 or tag.lower() in ignore:
                 continue

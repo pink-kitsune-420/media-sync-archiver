@@ -20,8 +20,10 @@ Version numbers follow [semantic versioning](https://semver.org): MAJOR.MINOR.PA
   default; its whole playlist can still be chosen under "Organize as".
 - Tags are chosen by relevance: those shared by the most videos of a show, then those the creator
   listed first. A show gets at most 10, and in a show of three or more videos a tag must be on at
-  least two of them, so one episode's topic doesn't become a tag of the whole show. Tags that just
-  repeat the show or channel name are left out.
+  least two of them, so one episode's topic doesn't become a tag of the whole show. Tags that are
+  just the show's or the channel's name are left out.
+- Hashtags in a video's title and description count as tags too (many creators use them instead of
+  YouTube's tag field); the `#…` at the end of a link doesn't.
 
 ### Fixed
 - Movies get tags too (at most 8).
