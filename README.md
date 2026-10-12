@@ -19,12 +19,14 @@ internet. Updates fetch only what is new or missing.
   being finished.
 - A web dashboard to manage everything, plus terminal commands for scheduled jobs.
 
-## What it is not
+## What it's for (and what it isn't)
 
-This is an archiving tool for the things you love to rewatch, not a bulk downloader. It deliberately
-keeps the load on YouTube low (see [how](#how-it-keeps-youtube-requests-low)) and does not try to get
-around YouTube's limits. Please support the creators you archive, and respect their wishes and
-YouTube's terms in your country.
+Media Sync Archiver can download whole channels and playlists, but it's built for keeping a personal
+offline copy of the shows you care about, not for scraping YouTube. It works through your
+subscriptions one at a time at a deliberately slow pace (see [how](#how-it-keeps-youtube-requests-low)),
+never downloads the same video twice, and doesn't try to get around YouTube's limits or blocks. It isn't
+meant for mass-collecting videos or data, or for re-uploading or sharing other people's content.
+Please support the creators you archive, and respect their wishes and YouTube's terms in your country.
 
 ## Install
 
@@ -92,7 +94,8 @@ and artwork too.
 | **Update** | New videos, plus anything missing from existing ones (subtitles, metadata, chapters, artwork, NFOs). Files that cannot be played are downloaded again. | Only for what is new or missing |
 | **Repair** | Everything Update does, plus reads every file completely to catch corrupt or truncated downloads, and rebuilds the artwork. | Same as Update, plus re-downloads of broken files |
 | **Restore** | Downloads the videos you deleted from the library again. | Only for those videos |
-| **Update all / Repair all** | The same for every subscription / everything in the library. | |
+| **Update all** | Update for every subscribed show, one at a time (movies are skipped: they never get new videos). | Same as Update, for each show |
+| **Repair all** | Repair for everything in the library, including items you've unsubscribed from. | Same as Repair, for each item |
 
 Videos you delete yourself **stay deleted**: Update never downloads them again. The library list shows
 how many were deleted, and Restore brings them back.
