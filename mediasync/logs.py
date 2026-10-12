@@ -52,7 +52,10 @@ class _DailyFile(logging.FileHandler):
 
     def _prune(self) -> None:
         for old in sorted(self.folder.glob("mediasync-*.log"))[:-KEEP_DAYS]:
-            old.unlink(missing_ok=True)
+            try:
+                old.unlink(missing_ok=True)
+            except OSError:  # e.g. still open in another program on Windows
+                pass
 
 
 class _ConsoleFormatter(logging.Formatter):

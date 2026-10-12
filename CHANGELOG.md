@@ -3,24 +3,35 @@
 All notable changes to Media Sync Archiver are listed here.
 Version numbers follow [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 
-## [Unreleased]
+## [1.0.1] - 2026-10-12
 
-- Log files: everything is written to a `logs` folder next to the settings (one file per day, two
-  weeks kept). The terminal now only shows the important lines: tasks, new videos, problems and
-  one-line errors. A new **Detailed log** setting also records every YouTube request and why each
-  video is skipped, fixed or downloaded.
-- When the disk is full, downloading pauses with a clear message instead of failing every task that
-  follows; press Resume after freeing up space.
-- Playlist entries YouTube lists as private or deleted are skipped without requesting them, instead of
-  failing (and being reported) on every update.
-- Dashboard: an activity entry's Details stay open until you close them, and the library list is
-  refreshed right after unsubscribing or queueing an action.
+Bug fixes and quality-of-life improvements. Settings, subscriptions and libraries from 1.0.0 keep
+working as they are.
+
+### Added
+- **Log files:** everything is written to a `logs` folder next to the settings, one file per day
+  (two weeks are kept). `python3 run.py config` and the Settings page show where.
+- **Detailed log** setting (Settings › Troubleshooting): also records every YouTube request and why
+  each video is skipped, fixed or downloaded.
+
+### Changed
+- The terminal only shows the important lines: tasks, new videos, problems, and errors as one line.
+  File renames, yt-dlp's own warnings and full error details go to the log file.
 - Playlist episodes you delete keep their number, so the episodes after them are no longer
   renumbered (Kodi keeps their watched status), and Restore puts a video back in its old place.
-  Videos that were never downloadable, such as private ones, still take no number.
-- Task summaries count renamed files ("file names ×N"); the list of renames is in the log file.
-- Fixed: opening the library list while files were being renamed could fail with an error.
-- The log says "Started downloading …" instead of a misleading 0% progress line.
+  Videos that were never downloadable, such as private ones, still take no number. If you deleted
+  playlist episodes with 1.0.0, the episodes after them get their original numbers back.
+- Playlist entries that YouTube lists as private or deleted are skipped without requesting them,
+  instead of failing (and being reported as a problem) on every update.
+- Task summaries count renamed files ("file names ×N").
+
+### Fixed
+- A full disk no longer makes every following task fail: downloading pauses, the dashboard says why,
+  and Resume continues where it stopped.
+- An activity entry's **Details** no longer collapse a second after opening them.
+- Unsubscribed items now disappear from the library list right away instead of after a page reload.
+- Opening the library list while files were being renamed could fail with an error.
+- The log no longer shows a misleading "0.0%" line for every download.
 
 ## [1.0.0] - 2026-10-12
 

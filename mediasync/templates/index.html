@@ -385,7 +385,8 @@ function renderStatus(s) {
         $('eta').textContent = c.eta || '–';
     } else {
         $('task-title').textContent = paused ? 'Paused' : 'Idle';
-        $('task-phase').textContent = s.queue.length ? 'Waiting to start the next task…' : 'Nothing is downloading.';
+        $('task-phase').textContent = s.pause_reason
+            || (s.queue.length ? 'Waiting to start the next task…' : 'Nothing is downloading.');
         bar.style.width = '0%';
         bar.textContent = '0%';
         $('speed').textContent = '–';

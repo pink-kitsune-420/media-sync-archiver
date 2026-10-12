@@ -121,6 +121,7 @@ class Engine:
         self._pending: list[Task] = []
         self._current: Task | None = None
         self._paused = False
+        self._pause_reason = ""
         self._stopping = False
         self._cancel = threading.Event()
         self._progress: dict = {}
@@ -169,20 +170,20 @@ class Engine:
 
     def pause(self) -> None:
         with self._lock:
-            self._paused = True
+            self._paused, self._pause_reason = True, ""
             if self._current:
                 self._cancel.set()
 
     def resume(self) -> None:
         with self._lock:
-            self._paused = False
+            self._paused, self._pause_reason = False, ""
             self._changed.notify_all()
 
     def stop(self) -> None:
         """Clears the queue and cancels the running download. Finished videos are still processed."""
         with self._lock:
             self._pending.clear()
-            self._paused = False
+            self._paused, self._pause_reason = False, ""
             if self._current:
                 self._stopping = True
                 self._cancel.set()
@@ -239,6 +240,7 @@ class Engine:
                 state = "idle"
             return {
                 "state": state,
+                "pause_reason": self._pause_reason if self._paused else "",
                 "current": current,
                 "queue": [{"id": t.id, "kind": t.kind, "name": t.label} for t in self._pending],
                 "processing": {"current": self._job_label, "pending": len(self._jobs)},
@@ -308,7 +310,7 @@ class Engine:
         with self._lock:
             if self._paused:
                 return
-            self._paused = True
+            self._paused, self._pause_reason = True, "The disk is full. Free up some space, then press Resume."
             if self._current:
                 self._cancel.set()
         log.error("The disk is full, so downloading is paused. Free up some space, then press Resume "

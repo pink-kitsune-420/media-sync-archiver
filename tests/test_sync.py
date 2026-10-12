@@ -270,6 +270,7 @@ class SyncTests(TempLibraryTestCase):
         self.assertTrue(self.engine.wait_until_idle(timeout=30))
         status = self.engine.status()
         self.assertEqual(status["state"], "paused")
+        self.assertIn("disk is full", status["pause_reason"])
         self.assertEqual([t["name"] for t in status["queue"]], ["Course"])
         self.assertEqual(list(self.engine.history), [])
 
