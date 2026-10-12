@@ -17,7 +17,7 @@ internet. Updates fetch only what is new or missing.
   downloads and fixes them. **Restore** brings back videos you deleted.
 - Downloads and processing run side by side: the next video downloads while the last one is
   being finished.
-- A web dashboard to manage everything (and a `mediasync` command for terminals and scheduled jobs).
+- A web dashboard to manage everything, plus terminal commands for scheduled jobs.
 
 ## What it is not
 
@@ -33,35 +33,37 @@ unlock all video formats; [Deno](https://deno.com) is recommended, Node.js works
 
 | | Linux (Debian/Ubuntu/Mint) | macOS | Windows |
 |---|---|---|---|
+| Python | usually installed; also `sudo apt install python3-venv` | `brew install python` | [python.org](https://www.python.org/downloads/) |
 | ffmpeg | `sudo apt install ffmpeg` | `brew install ffmpeg` | `winget install Gyan.FFmpeg` |
 | Deno | `curl -fsSL https://deno.land/install.sh \| sh` | `brew install deno` | `winget install DenoLand.Deno` |
-| pipx | `sudo apt install pipx` | `brew install pipx` | `py -m pip install --user pipx` |
 
-Then install Media Sync Archiver itself:
+Then download Media Sync Archiver, either with git:
 
 ```
-pipx install git+https://github.com/pink-kitsune-420/media-sync-archiver.git
-pipx ensurepath
+git clone https://github.com/pink-kitsune-420/media-sync-archiver.git
 ```
 
-`pipx ensurepath` makes sure your terminal can find programs installed with pipx; close the terminal and
-open a new one afterwards.
+or with the green **Code › Download ZIP** button on GitHub (unzip it anywhere you like).
 
 ## Start it
 
-In a terminal, run:
+Open a terminal in the `media-sync-archiver` folder and run:
 
 ```
-mediasync
+python3 run.py
 ```
 
-The dashboard opens in your browser at http://localhost:8765. Keep the terminal open while you use it;
-press `Ctrl+C` in it to stop the app.
+(On Windows: `py run.py`.) The dashboard opens in your browser at http://localhost:8765. Keep the
+terminal open while you use it; press `Ctrl+C` in it to stop the app.
 
-- **"mediasync: command not found"?** Run `pipx ensurepath`, then open a new terminal and try again.
-- **Running a downloaded copy without installing it?** Open a terminal in the project folder and run
-  `python3 -m mediasync` instead (Windows: `py -m mediasync`). Every `mediasync ...` command below
-  works the same way, e.g. `python3 -m mediasync update`.
+The first start takes a minute: `run.py` creates a private Python environment in a `.venv` folder
+inside the project and installs what the app needs into it. Nothing outside the project folder is
+changed (no system packages, no PATH changes), and deleting the folder removes everything except your
+videos and settings.
+
+**Updating:** download the new version (`git pull`, or a fresh ZIP), then start it with
+`python3 run.py --upgrade`, which also updates yt-dlp. YouTube changes often, so do this whenever
+downloads start failing.
 
 > Developed and tested on Linux. Windows and macOS should work but have had less testing; reports welcome.
 
@@ -97,19 +99,21 @@ how many were deleted, and Restore brings them back.
 
 ## Command line
 
+Everything the dashboard does also works from a terminal (in the project folder):
+
 ```
-mediasync                          open the dashboard
-mediasync add URL [--as movie|playlist|years] [--name NAME] [--limit N]
-mediasync update [NAME ...]        update every subscribed show, or just these
-mediasync repair [NAME ...]        repair the whole library, or just these
-mediasync restore NAME ...         download deleted videos again
-mediasync list                     what is subscribed and in the library
-mediasync clean                    remove leftover junk and unfinished downloads (asks first)
-mediasync config                   where settings, subscriptions and videos live
+python3 run.py                          open the dashboard
+python3 run.py add URL [--as movie|playlist|years] [--name NAME] [--limit N]
+python3 run.py update [NAME ...]        update every subscribed show, or just these
+python3 run.py repair [NAME ...]        repair the whole library, or just these
+python3 run.py restore NAME ...         download deleted videos again
+python3 run.py list                     what is subscribed and in the library
+python3 run.py clean                    remove leftover junk and unfinished downloads (asks first)
+python3 run.py config                   where settings, subscriptions and videos live
 ```
 
-`mediasync update` works well as a nightly cron job or scheduled task. The dashboard can also check
-automatically (Settings › Check for new videos).
+`python3 run.py update` works well as a nightly cron job or scheduled task. The dashboard can also
+check automatically (Settings › Check for new videos).
 
 ## How your library is organised
 
@@ -151,7 +155,7 @@ Movies/
 ## Settings
 
 Everything can be changed on the dashboard's **Settings** page or in `config.toml`
-(`mediasync config` shows where it is: `~/.config/mediasync/` on Linux, `%APPDATA%\mediasync` on Windows,
+(`python3 run.py config` shows where it is: `~/.config/mediasync/` on Linux, `%APPDATA%\mediasync` on Windows,
 `~/Library/Application Support/mediasync` on macOS). Library folders, maximum quality (default 1080p),
 subtitle languages, speed limit, gentle mode, automatic checks, who can open the dashboard, and the
 optional Kodi rescan. Set `MEDIASYNC_HOME` to keep settings and downloads somewhere else (e.g. a USB drive).
@@ -159,7 +163,7 @@ optional Kodi rescan. Set `MEDIASYNC_HOME` to keep settings and downloads somewh
 ## Troubleshooting
 
 - **"Sign in to confirm you're not a bot", HTTP 403 or 429 errors:** make sure Deno (or Node.js) is
-  installed, keep gentle mode on, and update yt-dlp: `pipx upgrade media-sync-archiver`.
+  installed, keep gentle mode on, and update yt-dlp: `python3 run.py --upgrade`.
   YouTube changes often, and a fresh yt-dlp usually fixes it.
 - **Kodi still shows old artwork:** Kodi caches images. Open the item's info and choose *Refresh*.
 - **Open the dashboard from your phone or TV:** set *Who can open this page* to *Any device on my home
@@ -182,11 +186,12 @@ Library conventions follow the [Kodi wiki](https://kodi.wiki/view/Naming_video_f
 ```
 git clone https://github.com/pink-kitsune-420/media-sync-archiver.git
 cd media-sync-archiver
-pip install -e .
-python -m unittest discover -s tests -t .
+python3 run.py --version
+.venv/bin/python -m unittest discover -s tests -t .
 ```
 
 The tests use small generated videos and a fake YouTube, so they run offline (ffmpeg required).
+If you prefer installing it as a regular command, `pipx install .` gives you `mediasync`.
 
 ## Disclaimer
 

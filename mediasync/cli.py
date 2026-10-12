@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import shutil
 import sys
 import threading
@@ -16,12 +17,15 @@ from .subscriptions import MODES, subscriptions
 from .sync import Task, tasks_for_all
 from .util import format_bytes
 
+# how the user started us: "mediasync" (installed) or "python3 run.py" (launcher sets MEDIASYNC_PROG)
+PROG = os.environ.get("MEDIASYNC_PROG", "mediasync")
+
 EPILOG = """examples:
-  mediasync                                  open the dashboard in your browser
-  mediasync add https://www.youtube.com/playlist?list=...
-  mediasync update                           check every subscribed show
-  mediasync repair "Backyard Pottery Club"   verify and fix one item
-  mediasync restore "Backyard Pottery Club"  download videos you deleted again
+  {prog}                                  open the dashboard in your browser
+  {prog} add https://www.youtube.com/playlist?list=...
+  {prog} update                           check every subscribed show
+  {prog} repair "Backyard Pottery Club"   verify and fix one item
+  {prog} restore "Backyard Pottery Club"  download videos you deleted again
 """
 
 
@@ -36,7 +40,7 @@ def _entries_by_name(names: list[str]) -> list[dict]:
     by_name = {e["name"]: e for e in library.catalog(subscriptions.all())}
     missing = [n for n in names if n not in by_name]
     if missing:
-        sys.exit(f"Not found: {', '.join(missing)}  (see `mediasync list`)")
+        sys.exit(f"Not found: {', '.join(missing)}  (see `{PROG} list`)")
     return [by_name[n] for n in names]
 
 
@@ -121,7 +125,7 @@ def cmd_restore(args) -> int:
 def cmd_list(args) -> int:
     entries = library.catalog(subscriptions.all())
     if not entries:
-        print("Nothing yet. Add something with: mediasync add <YouTube URL>")
+        print(f"Nothing yet. Add something with: {PROG} add <YouTube URL>")
         return 0
     labels = {"playlist": "playlist", "years": "by year", "movie": "movie"}
     width = min(max(len(e["name"]) for e in entries), 60)
@@ -173,7 +177,7 @@ def cmd_config(args) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="mediasync", epilog=EPILOG, formatter_class=argparse.RawDescriptionHelpFormatter,
+        prog=PROG, epilog=EPILOG.format(prog=PROG), formatter_class=argparse.RawDescriptionHelpFormatter,
         description="Media Sync Archiver: keep YouTube channels, playlists and videos as an offline "
                     "Kodi/Jellyfin library.")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
