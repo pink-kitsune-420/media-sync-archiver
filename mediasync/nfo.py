@@ -1,9 +1,9 @@
 """Kodi .nfo documents for episodes, movies and TV shows."""
 from __future__ import annotations
 
+import math
 import re
 import xml.etree.ElementTree as ET
-from collections import Counter
 
 from .metadata import PlaylistInfo, VideoInfo
 from .util import clean_text_for_xml
@@ -53,6 +53,8 @@ def movie_nfo(info: VideoInfo | None, *, video_id: str, title: str) -> str:
         _add(root, "studio", info.channel)
         for genre in sorted(set(info.categories)):
             _add(root, "genre", genre)
+        for tag in pick_tags([info], title, info.channel, limit=8):
+            _add(root, "tag", tag)
     _add(root, "plot", (info.description if info else "") or _NO_PLOT)
     _add(root, "uniqueid", video_id, type="youtube", default="true")
     return _render(root)
@@ -70,29 +72,36 @@ def tvshow_nfo(title: str, playlist: PlaylistInfo | None, videos: list[VideoInfo
     _add(root, "studio", channel)
     for genre in sorted({c for v in videos for c in v.categories}):
         _add(root, "genre", genre)
-    for tag in _pick_tags(videos, title, channel):
+    for tag in pick_tags(videos, title, channel):
         _add(root, "tag", tag)
     if playlist:
         _add(root, "uniqueid", playlist.id, type="youtube", default="true")
     return _render(root)
 
 
-def _pick_tags(videos: list[VideoInfo], show_name: str, channel: str, limit: int = 15) -> list[str]:
-    """The most common short video tags, minus words that just repeat the show/channel name."""
-    show_words = set(re.findall(r"\w+", show_name.lower()))
-    ignore = show_words | set(re.findall(r"\w+", channel.lower())) | {"video", "youtube"}
-    ignore.add("".join(w[0] for w in show_name.split() if w).lower())
-
-    counts = Counter(tag.strip() for v in videos for tag in set(v.tags) if tag.strip())
-    picked, seen = [], set()
-    for tag, _ in counts.most_common():
-        low = tag.lower()
-        singular = low[:-1] if low.endswith("s") else low
-        if len(low) <= 2 or low in ignore or len(tag.split()) > 2 or singular in seen or low + "s" in seen:
-            continue
-        seen.add(low)
-        seen.add(singular)
-        picked.append(tag.title() if tag.islower() or tag.isupper() else tag)
-        if len(picked) == limit:
-            break
-    return sorted(picked)
+def pick_tags(videos: list[VideoInfo], show_name: str, channel: str, limit: int = 10) -> list[str]:
+    """The most relevant YouTube tags: those shared by the most videos, then those their creator
+    listed first (the most important ones usually come first). In a show of three or more videos a
+    tag must be on at least two of them (and on a tenth), so one episode's topic doesn't become a
+    tag of the whole show. Tags that only repeat the show or channel name are left out."""
+    ignore = {w for w in re.findall(r"\w+", f"{show_name} {channel}".lower())} | {"video", "videos", "youtube"}
+    ignore.add("".join(w[0] for w in show_name.split() if w).lower())  # initials, e.g. "pa101"
+    ignore |= {show_name.lower().strip(), channel.lower().strip()}
+    counts: dict[str, int] = {}
+    positions: dict[str, list[int]] = {}
+    spelling: dict[str, str] = {}
+    for video in videos:
+        seen = set()
+        for position, tag in enumerate(t.strip() for t in video.tags):
+            key = tag.lower().rstrip("s") if len(tag) > 3 else tag.lower()  # "sprite" = "sprites"
+            if not tag or key in seen or len(tag) <= 2 or len(tag.split()) > 3 or tag.lower() in ignore:
+                continue
+            seen.add(key)
+            counts[key] = counts.get(key, 0) + 1
+            positions.setdefault(key, []).append(position)
+            spelling.setdefault(key, tag)
+    needed = 1 if len(videos) < 3 else max(2, math.ceil(len(videos) / 10))
+    ranked = sorted((k for k in counts if counts[k] >= needed),
+                    key=lambda k: (-counts[k], sum(positions[k]) / len(positions[k])))
+    return [spelling[k].title() if spelling[k].islower() or spelling[k].isupper() else spelling[k]
+            for k in ranked[:limit]]

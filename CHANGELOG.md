@@ -3,6 +3,17 @@
 All notable changes to Media Sync Archiver are listed here.
 Version numbers follow [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 
+## [Unreleased]
+
+### Changed
+- Tags are chosen by relevance: those shared by the most videos of a show, then those the creator
+  listed first. A show gets at most 10, and in a show of three or more videos a tag must be on at
+  least two of them, so one episode's topic doesn't become a tag of the whole show. Tags that just
+  repeat the show or channel name are left out.
+
+### Fixed
+- Movies get tags too (at most 8).
+
 ## [1.1.0] - 2026-10-12
 
 Several libraries, and external drives that aren't always plugged in. Settings, subscriptions and
