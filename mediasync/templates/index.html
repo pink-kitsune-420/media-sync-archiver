@@ -425,7 +425,7 @@ function libraryRow(item) {
     if (item.deleted) badges.push(el('span', {class: 'badge bg-dark border border-warning text-warning me-1', title: 'Videos you deleted are not downloaded again. Use Restore to get them back.', text: `${item.deleted} deleted`}));
     if (!item.url) badges.push(el('span', {class: 'badge bg-danger me-1', title: 'Source URL unknown: existing files can be checked but no new videos downloaded', text: 'no URL'}));
 
-    const action = (kind) => () => post('/api/action', {action: kind, name: item.name});
+    const action = (kind) => async () => { if (await post('/api/action', {action: kind, name: item.name})) refreshLibrary(); };
     const missing = item.location === 'missing';
     const menu = [];
     if (item.deleted) menu.push(el('li', {}, el('button', {class: 'dropdown-item', onclick: action('restore')}, icon('fa-trash-arrow-up'), ` Restore ${item.deleted} deleted video${item.deleted > 1 ? 's' : ''}`)));
