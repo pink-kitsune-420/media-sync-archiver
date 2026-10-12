@@ -30,7 +30,7 @@ from .util import move_file, read_json, remove_empty_dirs, video_id_from_name
 
 log = logging.getLogger(__name__)
 
-KINDS = ("update", "repair", "restore")
+KINDS = ("update", "repair", "restore", "move")
 _report_ids = itertools.count(1)
 _IMAGE_EXTS = (".jpg", ".jpeg", ".webp", ".png")
 
@@ -43,7 +43,8 @@ class Task:
     mode: str = "playlist"
     limit: int | None = None
     refresh_metadata: bool = False  # re-fetch every video's metadata from YouTube
-    library: str = ""               # where something new goes (default: its subscription's / the default library)
+    library: str = ""               # where something new goes (default: its subscription's / the default library);
+                                    # for "move": the library to move it to
     download_again: bool = False    # its folder is missing on purpose: download everything again
     id: int = 0
     report: Report | None = field(default=None, repr=False, compare=False)
@@ -59,6 +60,10 @@ class Task:
 
 class Skipped(Exception):
     """A task that is left alone, e.g. because its library's drive is not connected."""
+
+
+class TaskFailed(Exception):
+    """A task that could not be done, for a reason that needs no traceback (e.g. a full drive)."""
 
 
 @dataclass
@@ -108,7 +113,7 @@ class Report:
             parts.append(f"{len(self.errors)} problem{'s' if len(self.errors) != 1 else ''}")
         if self.status == "skipped":
             return self.note
-        text = "; ".join(parts) or "Everything up to date"
+        text = "; ".join(parts) or ("" if self.kind == "move" else "Everything up to date")
         return f"{self.note} {text}".strip() if self.note else text
 
     def as_dict(self) -> dict:
@@ -125,6 +130,7 @@ class Context(Protocol):
 
     def check_cancelled(self) -> None: ...
     def set_phase(self, text: str, done: int | None = None, total: int | None = None) -> None: ...
+    def set_bytes(self, text: str, done: int, total: int) -> None: ...
     def show_lock(self, name: str) -> threading.Lock: ...
     def in_flight(self, show_name: str) -> set[str]: ...
     def submit(self, label: str, show: Show, fn: Callable[[], None], video_id: str | None = None,
@@ -146,8 +152,8 @@ def tasks_for_all(kind: str) -> list[Task]:
 
 def task_for(kind: str, entry: dict, **options) -> Task:
     """A task for one entry of library.catalog()."""
-    return Task(kind, url=entry["url"], name=entry["name"], mode=entry["mode"], limit=entry["limit"],
-                library=entry["library"], **options)
+    options.setdefault("library", entry["library"])
+    return Task(kind, url=entry["url"], name=entry["name"], mode=entry["mode"], limit=entry["limit"], **options)
 
 
 # --------------------------------------------------------------------------- inspection
@@ -207,6 +213,9 @@ def find_staged_videos(show: Show) -> dict[str, Path]:
 
 def run_task(task: Task, ctx: Context, session_factory=None) -> None:
     """Runs on the download thread. Library changes are submitted to the processing thread."""
+    if task.kind == "move":
+        _move(task, ctx)
+        return
     from . import ytdl  # imported lazily so the library code can be used without yt-dlp installed
     session_factory = session_factory or ytdl.Session
     report = ctx.report
@@ -351,6 +360,35 @@ def _download_new(task: Task, ctx: Context, session, show: Show, store, state: S
     ctx.set_phase("Checking for new videos")
     session.download(show.staging_dir, known, on_video)
     return True
+
+
+def _move(task: Task, ctx: Context) -> None:
+    """Moves a show/movie to another library (no YouTube requests)."""
+    where = library.locate(task.name, task.mode, subscriptions.get(task.name))
+    target = config.get_library(task.library)
+    if where.status != "library":
+        raise Skipped(where.note or "It isn't in a connected library.")
+    if target is None:
+        raise TaskFailed(f"There is no library called '{task.library}'.")
+    if not target.online:
+        raise Skipped(f"{target.name} is not connected.")
+    show = where.show
+    if show.lib.name == target.name:
+        raise Skipped(f"It is already in {target.name}.")
+    phase = f"Moving to {target.name}"
+    ctx.set_phase(phase)
+    log.info("Moving %s from %s to %s", show.name, show.lib.name, target.name)
+    with ctx.show_lock(show.name):  # waits until nothing is processing it
+        try:
+            moved = library.move_show(show, target, lambda done, total: ctx.set_bytes(phase, done, total),
+                                      ctx.check_cancelled)
+        except (library.MoveError, library.LibraryOffline) as e:
+            raise TaskFailed(str(e)) from None
+    ctx.report.note = f"Moved from {show.lib.name} to {target.name}."
+    if show.library_dir.exists():
+        ctx.report.error(f"The old folder could not be removed completely; please delete it: {show.library_dir}")
+    ctx.show = moved
+    submit_finalize(ctx, moved)
 
 
 def submit_finalize(ctx: Context, show: Show, refresh_art: bool = False, listing_complete: bool = False) -> None:

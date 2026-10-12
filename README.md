@@ -101,7 +101,8 @@ and artwork too.
 | **Update all** | Update for every subscribed show, one at a time (movies are skipped: they never get new videos). | Same as Update, for each show |
 | **Repair all** | Repair for everything in the library, including items you've unsubscribed from. | Same as Repair, for each item |
 | **Download again** | Only offered when a show's folder has gone missing: downloads all of it again from scratch. | Yes, everything |
-| **Subscribe** / **Unsubscribe** | In the "…" menu: include a show in Update all, or stop updating it (its files are kept). | No |
+| **Subscribe** / **Unsubscribe** | In the "…" menu: include a show in Update all, or stop updating it (its files are kept). If its YouTube address isn't known, Subscribe asks for it. | No |
+| **Move to …** | In the "…" menu: moves a show or movie to another library, e.g. onto an external drive. | No |
 | **Delete leftovers** | Only offered for files left over from a download that didn't finish, when the show itself isn't in a connected library. | No |
 
 Videos you delete yourself **stay deleted**: Update never downloads them again, and the other episodes
@@ -118,8 +119,12 @@ A library is a Shows folder plus a Movies folder. You start with one; add more u
   its shows say *drive not connected*, and Update all, Repair all and automatic checks skip them.
   Nothing is downloaded for them and nothing is created where the drive was. Plug the drive in and
   they're back.
-- **Moving folders yourself is fine.** If you move a show's folder to another library, the app finds it
-  there and keeps updating it in its new place.
+- **Moving between libraries:** use **Move to …** in a show's "…" menu (or
+  `python3 run.py move NAME --to LIBRARY`). On another drive the files are copied first and the
+  originals are only removed once the copy is complete, so an interruption leaves the show as it was.
+  In Kodi a moved show appears from its new place, so its watched status starts over.
+- **Moving folders yourself is fine too.** If you move a show's folder to another library, the app
+  finds it there and keeps updating it in its new place.
 - **Download once, even then.** If a show you downloaded before can't be found anywhere, it's marked
   *folder missing* instead of being downloaded again. Use **Download again** only if you really
   want to start over.
@@ -137,6 +142,7 @@ python3 run.py update [NAME ...]        update every subscribed show, or just th
 python3 run.py update --download-again NAME   download a show whose folder is missing from scratch
 python3 run.py repair [NAME ...]        repair the whole library, or just these
 python3 run.py restore NAME ...         download deleted videos again
+python3 run.py move NAME ... --to LIBRARY     move shows/movies to another library
 python3 run.py list                     what is subscribed and in the library
 python3 run.py clean                    remove leftover junk and unfinished downloads (asks first)
 python3 run.py config                   where settings, libraries and logs are

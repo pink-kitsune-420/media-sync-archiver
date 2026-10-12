@@ -87,6 +87,27 @@ class WebTests(TempLibraryTestCase):
         self.assertEqual(subscriptions.get("Course"), Subscription(
             "Course", "https://www.youtube.com/playlist?list=PL1", "playlist", None, library="Main", archived=True))
 
+    def test_an_address_can_be_entered_when_it_is_unknown(self):
+        placeholder(config.SHOWS_DIR / "Course" / "Season 01" / "S01E01 - One [aaaaaaaaaaa].mkv")
+        bad = self.client.post("/api/action", json={"action": "subscribe", "name": "Course", "url": "nope"})
+        self.assertEqual(bad.status_code, 400)
+        url = "https://www.youtube.com/playlist?list=PL1"
+        res = self.client.post("/api/action", json={"action": "subscribe", "name": "Course", "url": url})
+        self.assertEqual(res.status_code, 200, res.json)
+        self.assertEqual(subscriptions.get("Course").url, url)
+
+    def test_moving_is_queued_only_to_a_connected_library(self):
+        placeholder(config.SHOWS_DIR / "Course" / "Season 01" / "S01E01 - One [aaaaaaaaaaa].mkv")
+        self.add_library("Drive", connected=False)
+        res = self.client.post("/api/action", json={"action": "move", "name": "Course", "library": "Drive"})
+        self.assertEqual(res.status_code, 400)
+        self.plug_in(config.get_library("Drive"))
+        res = self.client.post("/api/action", json={"action": "move", "name": "Course", "library": "Drive"})
+        self.assertEqual(res.status_code, 200, res.json)
+        self.assertEqual([(t["kind"], t["name"]) for t in self.engine.status()["queue"]], [("move", "Course")])
+        self.assertEqual(self.client.get("/api/status").json["libraries"],
+                         [{"name": "Main", "online": True}, {"name": "Drive", "online": True}])
+
     def test_bad_urls_are_refused(self):
         self.assertEqual(self.client.post("/api/queue", json={"url": "not a url"}).status_code, 400)
 

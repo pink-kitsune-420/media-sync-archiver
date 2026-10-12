@@ -1,4 +1,6 @@
 """Several libraries, and libraries on drives that are not always connected."""
+from unittest import mock
+
 from mediasync import config, library, sync
 from mediasync.library import Show
 from mediasync.subscriptions import Subscription, subscriptions
@@ -114,6 +116,23 @@ class CatalogTests(TempLibraryTestCase):
         self.assertEqual((entry["location"], entry["library"], entry["partial"]), ("library", "Drive", True))
 
 
+    def test_a_missing_address_is_found_in_the_videos_info(self):
+        show = Show("Course", "playlist")  # from an older version: no playlist.info.json
+        url = "https://www.youtube.com/playlist?list=PL1"
+        write_info(show.metadata_dir, info("aaaaaaaaaaa", "One", index=1, playlist_webpage_url=url))
+        write_info(show.metadata_dir, info("bbbbbbbbbbb", "Two", index=2, playlist_id="PL1"))
+        write_info(show.metadata_dir, info("ccccccccccc", "Three", index=3))  # fetched on its own
+        placeholder(show.library_dir / "Season 01" / "S01E01 - One [aaaaaaaaaaa].mkv")
+        entry = next(e for e in library.catalog(subscriptions.all()) if e["name"] == "Course")
+        self.assertEqual(entry["url"], url)
+
+        channel = Show("Channel", "years")
+        write_info(channel.metadata_dir, info("ddddddddddd", "Four", playlist_id="UC" + "x" * 22))
+        placeholder(channel.library_dir / "Season 2021" / "S2021E040401 - Four [ddddddddddd].mkv")
+        entry = next(e for e in library.catalog(subscriptions.all()) if e["name"] == "Channel")
+        self.assertEqual(entry["url"], "https://www.youtube.com/channel/UC" + "x" * 22 + "/videos")
+
+
 class PrepareLibrariesTests(TempLibraryTestCase):
     def test_new_libraries_get_folders_and_renames_keep_subscriptions(self):
         main = config.default_library()
@@ -130,3 +149,46 @@ class PrepareLibrariesTests(TempLibraryTestCase):
         blocker.write_text("a file where the drive's folder would be")
         lib = config.Library("Drive", str(blocker / "Shows"), str(blocker / "Movies"))
         self.assertEqual(library.prepare_libraries([], [lib]), ["Drive"])
+
+
+class MoveTests(TempLibraryTestCase):
+    def setUp(self):
+        super().setUp()
+        self.drive = self.add_library("Drive")
+        self.show = make_show(config.default_library())
+        self.files = sorted(p.relative_to(self.show.library_dir) for p in self.show.library_dir.rglob("*") if p.is_file())
+
+    def assert_moved(self, moved: Show):
+        self.assertEqual(moved.library, "Drive")
+        self.assertFalse(self.show.library_dir.exists())
+        self.assertEqual(sorted(p.relative_to(moved.library_dir) for p in moved.library_dir.rglob("*") if p.is_file()),
+                         self.files)  # .metadata included
+
+    def test_on_the_same_drive_it_is_renamed(self):
+        self.assert_moved(library.move_show(self.show, self.drive))
+
+    def test_to_another_drive_it_is_copied_then_removed(self):
+        progress = []
+        with mock.patch.object(library, "_same_drive", lambda a, b: False):
+            moved = library.move_show(self.show, self.drive, lambda done, total: progress.append((done, total)))
+        self.assert_moved(moved)
+        self.assertEqual(progress[-1][0], progress[-1][1])
+        self.assertEqual(list(self.drive.shows_path.glob(".moving-*")), [])
+
+    def test_an_interrupted_copy_leaves_the_original_alone(self):
+        def cancel():
+            raise KeyboardInterrupt
+        with mock.patch.object(library, "_same_drive", lambda a, b: False), self.assertRaises(KeyboardInterrupt):
+            library.move_show(self.show, self.drive, check_cancelled=cancel)
+        self.assertTrue(self.show.library_dir.is_dir())
+        self.assertEqual(list(self.drive.shows_path.iterdir()), [])
+
+    def test_nothing_is_moved_without_enough_space_or_onto_an_existing_folder(self):
+        with mock.patch.object(library, "_same_drive", lambda a, b: False), \
+                mock.patch.object(library.shutil, "disk_usage", lambda path: mock.Mock(free=10)), \
+                self.assertRaisesRegex(library.MoveError, "Not enough space on Drive"):
+            library.move_show(self.show, self.drive)
+        (self.drive.shows_path / "Course").mkdir()
+        with self.assertRaisesRegex(library.MoveError, "already has a folder"):
+            library.move_show(self.show, self.drive)
+        self.assertTrue(self.show.library_dir.is_dir())

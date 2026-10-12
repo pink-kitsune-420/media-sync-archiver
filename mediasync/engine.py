@@ -22,7 +22,7 @@ from yt_dlp.utils import DownloadCancelled
 from . import config, kodi
 from .library import LibraryOffline, Show
 from .logs import DETAIL
-from .sync import Report, Skipped, Task, run_task, submit_finalize, tasks_for_all
+from .sync import Report, Skipped, Task, TaskFailed, run_task, submit_finalize, tasks_for_all
 from .util import format_bytes, format_duration, is_disk_full, read_json, write_json
 from .ytdl import parse_rate
 
@@ -57,6 +57,10 @@ class TaskContext:
 
     def set_phase(self, text: str, done: int | None = None, total: int | None = None) -> None:
         self._engine._update_progress({"phase": text, "done": done, "total": total})
+
+    def set_bytes(self, text: str, done: int, total: int) -> None:
+        self._engine._update_progress({"phase": text, "percent": round(done / total * 100, 1) if total else None,
+                                       "detail": f"{format_bytes(done)} of {format_bytes(total)}"})
 
     def on_progress(self, d: dict) -> None:
         self.check_cancelled()
@@ -289,6 +293,10 @@ class Engine:
                     self._finish(ctx)
             except Skipped as e:
                 task.report.status, task.report.note = "skipped", str(e)
+                self._record(task.report)
+            except TaskFailed as e:
+                task.report.status, task.report.note = "error", "Failed."
+                task.report.errors.append(str(e))
                 self._record(task.report)
             except Exception as e:  # noqa: BLE001 - a failed task must not kill the thread
                 if is_disk_full(e):

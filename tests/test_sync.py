@@ -314,6 +314,21 @@ class SyncTests(TempLibraryTestCase):
         report = self.run_and_wait(Task("update", url=url, name="Resolved Show", download_again=True))
         self.assertEqual(report.downloaded, 2)
 
+    def test_a_show_is_moved_to_another_library(self):
+        self.add_library("Drive")
+        url = "https://www.youtube.com/playlist?list=PLx"
+        self.run_and_wait(Task("update", url=url))
+        report = self.run_and_wait(Task("move", name="Resolved Show", mode="playlist", library="Drive"))
+        self.assertEqual((report.status, report.summary()), ("ok", "Moved from Main to Drive."), report.errors)
+        self.assertFalse((config.SHOWS_DIR / "Resolved Show").exists())
+        self.assertEqual(len(find_videos(Show("Resolved Show", "playlist", "Drive"))), 2)
+        self.assertEqual(subscriptions.get("Resolved Show").library, "Drive")
+
+        FakeSession.calls = []
+        report = self.run_and_wait(Task("update", url=url))  # keeps updating it in its new place
+        self.assertEqual((report.status, report.downloaded), ("ok", 0), report.errors)
+        self.assertEqual(len(FakeSession.calls), 1)
+
     def test_nothing_happens_for_a_name_without_a_folder_or_address(self):
         report = self.run_and_wait(Task("update", name="Leftovers Only"))
         self.assertEqual(report.status, "skipped")

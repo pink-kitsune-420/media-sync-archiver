@@ -141,6 +141,13 @@ def cmd_restore(args) -> int:
     return run_tasks(_tasks("restore", args.names))
 
 
+def cmd_move(args) -> int:
+    target = config.get_library(args.library)
+    if target is None:
+        sys.exit(f"There is no library called '{args.library}' (see `{PROG} config`)")
+    return run_tasks([task_for("move", entry, library=target.name) for entry in _entries_by_name(args.names)])
+
+
 def cmd_list(args) -> int:
     entries = library.catalog(subscriptions.all())
     if not entries:
@@ -239,6 +246,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("names", nargs="+")
     p.set_defaults(func=cmd_restore)
 
+    p = sub.add_parser("move", help="move shows/movies to another library (e.g. onto an external drive)")
+    p.add_argument("names", nargs="+", metavar="NAME")
+    p.add_argument("--to", dest="library", required=True, metavar="LIBRARY", help="the library to move them to")
+    p.set_defaults(func=cmd_move)
+
     sub.add_parser("list", help="show subscriptions and what is in the library").set_defaults(func=cmd_list)
 
     p = sub.add_parser("clean", help="delete leftover junk and unfinished downloads (asks first)")
@@ -249,7 +261,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-COMMANDS = ("serve", "add", "update", "repair", "restore", "list", "clean", "config")
+COMMANDS = ("serve", "add", "update", "repair", "restore", "move", "list", "clean", "config")
 
 
 def normalize_argv(argv: list[str]) -> list[str]:

@@ -1,6 +1,7 @@
 """Video and playlist metadata: reading yt-dlp .info.json files and storing compact copies of them."""
 from __future__ import annotations
 
+import re
 import threading
 from dataclasses import dataclass, field
 from datetime import date, timedelta
@@ -14,7 +15,7 @@ _KEEP_KEYS = (
     "id", "title", "fulltitle", "description", "upload_date", "timestamp", "release_date", "duration",
     "channel", "channel_id", "channel_url", "uploader", "uploader_id", "uploader_url",
     "webpage_url", "thumbnail", "chapters", "categories", "tags", "view_count", "like_count",
-    "playlist", "playlist_id", "playlist_title", "playlist_index", "playlist_count",
+    "playlist", "playlist_id", "playlist_title", "playlist_index", "playlist_count", "playlist_webpage_url",
     "extractor", "extractor_key", "_type", "ext", "width", "height", "fps", "vcodec", "acodec",
     "language", "age_limit", "availability", "live_status", "playlist_uploader",
 )
@@ -22,7 +23,19 @@ _KEEP_KEYS = (
 
 # Where a video sits in its playlist. Only known when it was fetched through the playlist, so a
 # refresh via the plain video URL must keep the stored values (otherwise episodes get renumbered).
-_PLAYLIST_KEYS = ("playlist", "playlist_id", "playlist_title", "playlist_index", "playlist_count")
+_PLAYLIST_KEYS = ("playlist", "playlist_id", "playlist_title", "playlist_index", "playlist_count",
+                  "playlist_webpage_url")
+_CHANNEL_ID_RE = re.compile(r"UC[\w-]{22}")
+
+
+def _playlist_url(raw: dict) -> str:
+    """Address of the playlist/channel a video was downloaded from, if its info says so."""
+    if raw.get("playlist_webpage_url"):
+        return raw["playlist_webpage_url"]
+    playlist_id = raw.get("playlist_id") or ""
+    if _CHANNEL_ID_RE.fullmatch(playlist_id):  # a channel's uploads were listed
+        return f"https://www.youtube.com/channel/{playlist_id}/videos"
+    return f"https://www.youtube.com/playlist?list={playlist_id}" if playlist_id else ""
 
 
 def _subtitle_langs(raw: dict) -> list[str]:
@@ -59,6 +72,7 @@ class VideoInfo:
     categories: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
     playlist_index: int | None = None
+    playlist_url: str = ""  # where it was listed from
     subtitle_langs: list[str] = field(default_factory=list)
     has_audio: bool = True
 
@@ -82,6 +96,7 @@ class VideoInfo:
             categories=[c for c in raw.get("categories") or [] if c],
             tags=[t for t in raw.get("tags") or [] if t],
             playlist_index=raw.get("playlist_index"),
+            playlist_url=_playlist_url(raw),
             subtitle_langs=_subtitle_langs(raw),
             has_audio=raw.get("acodec") != "none",
         )

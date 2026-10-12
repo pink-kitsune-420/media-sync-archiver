@@ -17,17 +17,19 @@ import os
 import re
 import shutil
 import tempfile
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import Callable
 
 from . import artwork, config, media, nfo
 from .logs import DETAIL
 from .metadata import MetadataStore, VideoInfo
 from .subscriptions import subscriptions
 from .util import (
-    is_fragment, move_file, remove_empty_dirs, sanitize_filename, truncate_utf8, video_id_from_name,
-    write_text_if_changed,
+    format_bytes, is_fragment, move_file, remove_empty_dirs, sanitize_filename, truncate_utf8,
+    video_id_from_name, write_text_if_changed,
 )
 
 log = logging.getLogger(__name__)
@@ -42,6 +44,10 @@ PLAYLIST_ART = "playlist.jpg"
 
 class LibraryOffline(Exception):
     """The library a show lives in is not connected (its drive is unplugged)."""
+
+
+class MoveError(Exception):
+    """A show could not be moved to another library (nothing was changed)."""
 
 
 @dataclass(frozen=True)
@@ -568,6 +574,62 @@ def locate(name: str, mode: str, sub=None, wanted_library: str = "") -> Location
     return Location(show, "new")
 
 
+def move_show(show: Show, target: config.Library, progress: Callable[[int, int], None] | None = None,
+              check_cancelled: Callable[[], None] = lambda: None) -> Show:
+    """Moves a show/movie folder to another library and returns it in its new place.
+
+    On the same drive this is an instant rename. To another drive, everything is first copied into
+    a hidden folder there and checked, and only then is the original deleted: an interruption
+    (pause, an unplugged drive, a full disk) leaves the original as it was."""
+    show.require_online()
+    if not target.online:
+        raise LibraryOffline(f"{target.name} is not connected")
+    src = show.library_dir
+    target_root = target.path_for(show.is_movie)
+    target_root.mkdir(parents=True, exist_ok=True)  # the library is connected, so this is its drive
+    dst = target_root / show.name
+    if dst.exists():
+        raise MoveError(f"{target.name} already has a folder called “{show.name}”.")
+    moved = Show(show.name, show.mode, target.name)
+    if _same_drive(src, target_root):
+        src.rename(dst)
+        return moved
+
+    files = [p for p in src.rglob("*") if p.is_file()]
+    total = sum(p.stat().st_size for p in files)
+    free = shutil.disk_usage(target_root).free
+    if total > free:
+        raise MoveError(f"Not enough space on {target.name}: it needs {format_bytes(total)}, "
+                        f"and {format_bytes(free)} is free.")
+    tmp = target_root / f".moving-{show.name}"
+    shutil.rmtree(tmp, ignore_errors=True)  # left by an interrupted move
+    done = 0
+    try:
+        for f in files:
+            out = tmp / f.relative_to(src)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            with open(f, "rb") as fin, open(out, "wb") as fout:
+                while chunk := fin.read(8 << 20):
+                    check_cancelled()
+                    fout.write(chunk)
+                    done += len(chunk)
+                    if progress:
+                        progress(done, total)
+            shutil.copystat(f, out)
+            if out.stat().st_size != f.stat().st_size:
+                raise MoveError(f"Copying {f.relative_to(src)} to {target.name} failed; nothing was moved.")
+        tmp.rename(dst)
+    except BaseException:
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise
+    shutil.rmtree(src, ignore_errors=True)  # the caller reports it if anything is left
+    return moved
+
+
+def _same_drive(a: Path, b: Path) -> bool:
+    return a.stat().st_dev == b.stat().st_dev
+
+
 def prepare_libraries(old: list[config.Library], new: list[config.Library]) -> list[str]:
     """After the library settings changed: keeps subscriptions pointing at renamed libraries and
     creates the folders of new or moved libraries. Returns the libraries whose folders could not be
@@ -658,11 +720,14 @@ def _size(path: Path) -> int:
 
 
 def _guess_url(show: Show) -> str | None:
+    """The YouTube address of something not subscribed to, from its saved metadata (no requests)."""
     if not show.metadata_dir.is_dir():
         return None
     store = show.metadata()
     if store.playlist and store.playlist.webpage_url:
         return store.playlist.webpage_url
-    if show.is_movie and store.videos:
-        return next(iter(store.videos.values())).webpage_url
-    return None
+    if show.is_movie:
+        return next((v.webpage_url for v in store.videos.values() if v.webpage_url), None)
+    # e.g. from older versions without playlist.info.json: where most of its videos were listed from
+    sources = Counter(v.playlist_url for v in store.videos.values() if v.playlist_url)
+    return sources.most_common(1)[0][0] if sources else None

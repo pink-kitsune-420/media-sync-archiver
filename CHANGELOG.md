@@ -16,8 +16,13 @@ Version numbers follow [semantic versioning](https://semver.org): MAJOR.MINOR.PA
 - A show that was downloaded before but whose folder is gone is marked *folder missing* instead of
   being downloaded again from scratch; **Download again** (`update --download-again NAME`) does
   that on purpose.
+- **Move to …** (in the "…" menu, or `move NAME --to LIBRARY`): moves a show or movie to another
+  library. Onto another drive it is copied first and the original removed only once the copy is
+  complete; there must be enough free space, and an interruption leaves everything as it was.
 - **Subscribe** (in the "…" menu) for shows in the library that you aren't subscribed to, so
-  unsubscribing can be undone without pasting the URL again.
+  unsubscribing can be undone without pasting the URL again. If the YouTube address isn't known,
+  it asks for it.
+- The dashboard notices a drive being plugged in or unplugged within a second.
 - Unsubscribing and other changes to subscriptions are written to the log.
 
 ### Changed
@@ -25,6 +30,8 @@ Version numbers follow [semantic versioning](https://semver.org): MAJOR.MINOR.PA
   as downloaded, so a show whose folder is away is never downloaded again by accident.
 
 ### Fixed
+- Shows from older versions without a `playlist.info.json` no longer show "no URL": the address
+  is taken from their videos' saved information (no YouTube requests).
 - Files left over from a download that didn't finish, for a show that isn't in a connected library,
   no longer show up as a show with Update/Repair buttons that do nothing. They're listed as
   *leftover download files* with a **Delete leftovers** button.

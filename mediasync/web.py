@@ -37,7 +37,8 @@ def create_app(engine: Engine) -> Flask:
 
     @app.get("/api/status")
     def status():
-        return jsonify(engine.status())
+        libraries = [{"name": lib.name, "online": lib.online} for lib in config.libraries()]
+        return jsonify({**engine.status(), "libraries": libraries})
 
     @app.get("/api/library")
     def library_list():
@@ -86,12 +87,26 @@ def create_app(engine: Engine) -> Flask:
             log.info("Unsubscribed %s (its files were kept)", name)
             return jsonify(message=f"'{name}' will no longer be synced (files were kept).")
         if kind == "subscribe":
-            if entry["subscribed"] or not entry["url"]:
-                return _error(f"'{name}' can't be subscribed to: its YouTube address is unknown.")
-            subscriptions.upsert(Subscription(name, entry["url"], entry["mode"], entry["limit"],
+            url = entry["url"] or (data.get("url") or "").strip()  # entered by hand when it isn't known
+            if entry["subscribed"]:
+                return _error(f"'{name}' is already subscribed.")
+            if not url.startswith(("http://", "https://")):
+                return _error("Please enter its full YouTube address (starting with https://).")
+            subscriptions.upsert(Subscription(name, url, entry["mode"], entry["limit"],
                                               library=entry["library"], archived=entry["location"] == "library"))
             log.info("Subscribed to %s", name)
             return jsonify(message=f"Subscribed: Update all now includes '{name}'.")
+        if kind == "move":
+            target = config.get_library(data.get("library"))
+            if entry["location"] != "library":
+                return _error(f"'{name}' can only be moved while it is in a connected library.")
+            if target is None or target.name == entry["library"]:
+                return _error("Choose another library to move it to.")
+            if not target.online:
+                return _error(f"{target.name} is not connected.")
+            if not engine.enqueue(task_for("move", entry, library=target.name)):
+                return _error(f"'{name}' is already being moved.", 409)
+            return jsonify(message=f"Queued: moving '{name}' to {target.name}")
         if kind == "delete_leftovers":
             if entry["location"] != "leftovers":
                 return _error(f"'{name}' has no leftover download files.")

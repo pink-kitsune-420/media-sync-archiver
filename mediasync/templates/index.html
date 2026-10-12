@@ -254,6 +254,8 @@ let libraryVersion = null;
 let paused = false;
 let lastQueue = null;
 let lastHistory = null;
+let libraries = [];       // [{name, online}], from /api/status
+let lastLibraries = null;
 const openDetails = new Set();  // activity entries whose Details are expanded
 
 function el(tag, attrs = {}, ...children) {
@@ -357,7 +359,7 @@ $('repair-all-btn').addEventListener('click', () => {
     }
 });
 
-const VERBS = {update: 'Updating', repair: 'Repairing', restore: 'Restoring'};
+const VERBS = {update: 'Updating', repair: 'Repairing', restore: 'Restoring', move: 'Moving'};
 
 function renderStatus(s) {
     paused = s.state === 'paused';
@@ -402,10 +404,26 @@ function renderStatus(s) {
     const historyJson = JSON.stringify(s.history);
     if (historyJson !== lastHistory) { lastHistory = historyJson; renderHistory(s.history); }
 
+    // A drive was plugged in or unplugged (or the libraries changed): offline rows change too.
+    const librariesJson = JSON.stringify(s.libraries);
+    if (librariesJson !== lastLibraries) {
+        lastLibraries = librariesJson;
+        applyLibraries(s.libraries);
+        libraryVersion = null;
+    }
     if (s.library_version !== libraryVersion) {
         libraryVersion = s.library_version;
         refreshLibrary();
     }
+}
+
+function applyLibraries(list) {
+    libraries = list;
+    const choice = $('add-library').value;
+    $('add-library').replaceChildren(...list.map((lib) => el('option', {value: lib.name,
+        text: lib.online ? lib.name : `${lib.name} (not connected)`})));
+    if (list.some((lib) => lib.name === choice)) $('add-library').value = choice;
+    $('add-library-col').classList.toggle('d-none', list.length < 2);
 }
 
 function renderQueue(queue) {
@@ -454,7 +472,7 @@ function libraryRow(item, showLibrary) {
     if (item.location === 'new') badges.push(el('span', {class: 'badge bg-info text-dark me-1', text: 'not downloaded yet'}));
     if (item.partial && !leftovers) badges.push(el('span', {class: 'badge bg-warning text-dark me-1', title: 'Unfinished downloads resume on the next update', text: 'unfinished download'}));
     if (item.deleted) badges.push(el('span', {class: 'badge bg-dark border border-warning text-warning me-1', title: 'Videos you deleted are not downloaded again. Use Restore to get them back.', text: `${item.deleted} deleted`}));
-    if (!item.url && !leftovers) badges.push(el('span', {class: 'badge bg-danger me-1', title: 'Source URL unknown: existing files can be checked but no new videos downloaded', text: 'no URL'}));
+    if (!item.url && !leftovers) badges.push(el('span', {class: 'badge bg-danger me-1', title: 'Its YouTube address is unknown: existing files can be checked, but no new videos downloaded. Enter it with “Subscribe…” in the … menu.', text: 'no URL'}));
 
     const action = (kind) => async () => { if (await post('/api/action', {action: kind, name: item.name})) refreshLibrary(); };
     const missing = item.location === 'new';
@@ -478,6 +496,18 @@ function libraryRow(item, showLibrary) {
     if (item.deleted) menu.push(el('li', {}, el('button', {class: 'dropdown-item', onclick: action('restore')}, icon('fa-trash-arrow-up'), ` Restore ${item.deleted} deleted video${item.deleted > 1 ? 's' : ''}`)));
     if (!item.subscribed && item.url && present) menu.push(el('li', {}, el('button', {class: 'dropdown-item', onclick: action('subscribe')},
         icon('fa-bell'), ' Subscribe (include it in Update all)')));
+    if (!item.subscribed && !item.url && present) menu.push(el('li', {}, el('button', {class: 'dropdown-item', onclick: async () => {
+        const url = prompt(`The YouTube address of "${item.name}" (its playlist, channel or video):`);
+        if (url && await post('/api/action', {action: 'subscribe', name: item.name, url: url.trim()})) refreshLibrary();
+    }}, icon('fa-link'), ' Subscribe… (enter its YouTube address)')));
+    if (item.location === 'library') for (const lib of libraries.filter((l) => l.name !== item.library)) {
+        menu.push(el('li', {}, el('button', {class: 'dropdown-item', disabled: lib.online ? false : '', onclick: () => {
+            if (confirm(`Move "${item.name}" to ${lib.name}?\n\nIts files are copied there and then removed from ${item.library}. `
+                        + 'In Kodi it shows up from its new place, so its watched status starts over.')) {
+                post('/api/action', {action: 'move', name: item.name, library: lib.name});
+            }
+        }}, icon('fa-truck-arrow-right'), ` Move to ${lib.name}${lib.online ? '' : ' (not connected)'}`)));
+    }
     if (item.subscribed) menu.push(el('li', {}, el('button', {class: 'dropdown-item', onclick: () => {
         if (confirm(`Unsubscribe from "${item.name}"? Downloaded files are kept.`)) action('unsubscribe')();
     }}, icon('fa-bell-slash'), ' Unsubscribe (keeps the files)')));
@@ -565,11 +595,6 @@ function showSettings(data) {
     const s = data.settings;
     $('library-editor').replaceChildren(...s.libraries.map((lib) => libraryCard(lib, data.online[lib.name])));
     updateLibraryEditor();
-    const choice = $('add-library').value;
-    $('add-library').replaceChildren(...s.libraries.map((lib) => el('option', {value: lib.name,
-        text: data.online[lib.name] ? lib.name : `${lib.name} (not connected)`})));
-    if (s.libraries.some((lib) => lib.name === choice)) $('add-library').value = choice;
-    $('add-library-col').classList.toggle('d-none', s.libraries.length < 2);
     $('welcome-shows').textContent = s.libraries[0].shows_dir;
     $('welcome-movies').textContent = s.libraries[0].movies_dir;
     for (const name of SETTING_FIELDS) {
