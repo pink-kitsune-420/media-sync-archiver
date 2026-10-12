@@ -3,14 +3,13 @@ work from a terminal (or a scheduled job) using the same engine."""
 from __future__ import annotations
 
 import argparse
-import logging
 import os
 import shutil
 import sys
 import threading
 import webbrowser
 
-from . import __version__, config, library
+from . import __version__, config, library, logs
 from .engine import Engine
 from .library import Show
 from .subscriptions import MODES, subscriptions
@@ -76,7 +75,10 @@ def run_tasks(tasks: list[Task]) -> int:
         print(f"  [{report.status}] {report.name}: {report.summary()}")
         for err in report.errors:
             print(f"      - {err}")
-    return 1 if any(r.status == "error" for r in reports) else 0
+    not_run = engine.status()["queue"]
+    if not_run:  # paused because the disk is full
+        print(f"  Not done yet: {', '.join(t['name'] for t in not_run)}")
+    return 1 if not_run or any(r.status == "error" for r in reports) else 0
 
 
 def cmd_serve(args) -> int:
@@ -89,6 +91,7 @@ def cmd_serve(args) -> int:
     print(f"  settings:   {config.config_file()}")
     print(f"  shows:      {config.SHOWS_DIR}")
     print(f"  movies:     {config.MOVIES_DIR}")
+    print(f"  logs:       {config.LOG_DIR}" + ("  (detailed)" if config.settings.detailed_log else ""))
     _ensure_folders()
     if not args.no_browser:
         threading.Timer(1.5, webbrowser.open, args=(url,)).start()
@@ -172,6 +175,7 @@ def cmd_config(args) -> int:
     print(f"shows folder:   {config.SHOWS_DIR}")
     print(f"movies folder:  {config.MOVIES_DIR}")
     print(f"downloads:      {config.STAGING_DIR}")
+    print(f"logs:           {config.LOG_DIR}")
     return 0
 
 
@@ -234,10 +238,10 @@ def normalize_argv(argv: list[str]) -> list[str]:
 
 def main(argv: list[str] | None = None) -> None:
     args = build_parser().parse_args(normalize_argv(list(sys.argv[1:] if argv is None else argv)))
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(message)s", datefmt="%H:%M:%S")
-    logging.getLogger("werkzeug").setLevel(logging.WARNING)
     try:
         config.apply(config.load())
     except (ValueError, OSError) as e:
         sys.exit(f"Could not read {config.config_file()}: {e}")
+    if args.command not in ("list", "config"):
+        logs.setup(args.command)
     sys.exit(args.func(args))

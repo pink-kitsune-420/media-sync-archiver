@@ -21,8 +21,9 @@ from yt_dlp.utils import DownloadCancelled
 
 from . import config, kodi
 from .library import Show
+from .logs import DETAIL
 from .sync import Report, Task, run_task, submit_finalize, tasks_for_all
-from .util import format_bytes, format_duration, read_json, write_json
+from .util import format_bytes, format_duration, is_disk_full, read_json, write_json
 from .ytdl import parse_rate
 
 log = logging.getLogger(__name__)
@@ -79,10 +80,10 @@ class TaskContext:
             now = time.monotonic()
             if info["title"] != self._logged_title:  # first progress report of a new video
                 self._logged_title, self._last_log = info["title"], now
-                log.info("Started downloading %s", info["title"])
+                log.log(DETAIL, "Started downloading %s", info["title"])
             elif now - self._last_log > 30 and total:
                 self._last_log = now
-                log.info("Still downloading %s: %d%% done", info["title"], done / total * 100)
+                log.log(DETAIL, "Still downloading %s: %d%% done", info["title"], done / total * 100)
         elif d["status"] == "finished":
             self._engine._update_progress({"phase": "Merging", "video": info["title"], "percent": 100.0,
                                            "speed": "", "eta": ""})
@@ -98,6 +99,8 @@ class TaskContext:
 
     def error(self, message: str) -> None:
         self.report.error(message)
+        if is_disk_full(message):
+            self._engine._disk_full()
 
     def show_lock(self, name: str) -> threading.Lock:
         return self._engine.show_lock(name)
@@ -210,10 +213,11 @@ class Engine:
             return self._show_locks[name]
 
     def wait_until_idle(self, timeout: float | None = None) -> bool:
-        """Blocks until nothing is queued, running or processing. Returns False on timeout."""
+        """Blocks until nothing is running or processing and the queue is empty (or paused).
+        Returns False on timeout."""
         deadline = None if timeout is None else time.monotonic() + timeout
         with self._lock:
-            while self._current or self._pending or self._jobs or self._job_label:
+            while self._current or (self._pending and not self._paused) or self._jobs or self._job_label:
                 if deadline is not None and time.monotonic() > deadline:
                     return False
                 self._changed.wait(1)
@@ -262,6 +266,8 @@ class Engine:
                 self._cancel.clear()
                 self._stopping = False
             ctx = TaskContext(self, task)
+            started = time.monotonic()
+            log.debug("Task #%d started: %s %s", task.id, task.kind, task.label)
             try:
                 run_task(task, ctx)
             except DownloadCancelled:
@@ -274,12 +280,18 @@ class Engine:
                     task.report.note = "Stopped."
                     self._finish(ctx)
             except Exception as e:  # noqa: BLE001 - a failed task must not kill the thread
-                log.exception("Task failed: %s", task.label)
-                task.report.status = "error"
-                task.report.errors.append(str(e))
-                task.report.note = "Failed."
-                self._finish(ctx)
+                if is_disk_full(e):
+                    self._disk_full()
+                    with self._lock:
+                        self._pending.insert(0, task)  # runs again after Resume
+                else:
+                    log.exception("Task failed: %s", task.label)
+                    task.report.status = "error"
+                    task.report.errors.append(str(e))
+                    task.report.note = "Failed."
+                    self._finish(ctx)
             finally:
+                log.debug("Task #%d left the download thread after %.0fs", task.id, time.monotonic() - started)
                 with self._lock:
                     self._current, self._progress = None, {}
                     self._changed.notify_all()
@@ -290,6 +302,17 @@ class Engine:
             submit_finalize(ctx, ctx.show)
         else:
             self._record(ctx.report)
+
+    def _disk_full(self) -> None:
+        """Pauses the queue when the disk is full, instead of letting every following task fail."""
+        with self._lock:
+            if self._paused:
+                return
+            self._paused = True
+            if self._current:
+                self._cancel.set()
+        log.error("The disk is full, so downloading is paused. Free up some space, then press Resume "
+                  "(or run the command again).")
 
     def _record(self, report: Report) -> None:
         report.finished = datetime.now()
@@ -319,14 +342,21 @@ class Engine:
                     self._changed.wait()
                 job = self._jobs.popleft()
                 self._job_label = job.label
+            started, errors_before = time.monotonic(), len(job.report.errors)
             try:
                 with self.show_lock(job.show.name):
                     job.fn()
                 self._library_changed = True
             except Exception as e:  # noqa: BLE001
-                log.exception("Processing failed: %s", job.label)
+                if is_disk_full(e):
+                    log.error("%s: %s", job.label, e)
+                else:
+                    log.exception("Processing failed: %s", job.label)
                 job.report.error(f"{job.label}: {e}")
             finally:
+                log.debug("%s took %.1fs", job.label, time.monotonic() - started)
+                if any(is_disk_full(err) for err in job.report.errors[errors_before:]):
+                    self._disk_full()
                 with self._lock:
                     if job.video_id:
                         self._in_flight[job.show.name][job.video_id] -= 1

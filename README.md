@@ -160,11 +160,16 @@ Movies/
 Everything can be changed on the dashboard's **Settings** page or in `config.toml`
 (`python3 run.py config` shows where it is: `~/.config/mediasync/` on Linux, `%APPDATA%\mediasync` on Windows,
 `~/Library/Application Support/mediasync` on macOS). Library folders, maximum quality (default 1080p),
-subtitle languages, speed limit, gentle mode, automatic checks, who can open the dashboard, and the
-optional Kodi rescan. Set `MEDIASYNC_HOME` to keep settings and downloads somewhere else (e.g. a USB drive).
+subtitle languages, speed limit, gentle mode, automatic checks, who can open the dashboard, the
+optional Kodi rescan, and a detailed log. Set `MEDIASYNC_HOME` to keep settings and downloads somewhere else (e.g. a USB drive).
 
 ## Troubleshooting
 
+- **Logs:** the terminal only shows the important lines. Everything else (file renames, yt-dlp's
+  messages, full error details) goes to the `logs` folder next to your settings, one file per day
+  (`python3 run.py config` shows where). Switch on *Settings › Detailed log* to also record every
+  YouTube request; attach that day's log file when you report a problem.
+- **Disk full:** downloading pauses by itself. Free up some space, then press *Resume*.
 - **"Sign in to confirm you're not a bot", HTTP 403 or 429 errors:** make sure Deno (or Node.js) is
   installed, keep gentle mode on, and update yt-dlp: `python3 run.py --upgrade`.
   YouTube changes often, and a fresh yt-dlp usually fixes it.

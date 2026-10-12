@@ -51,7 +51,7 @@ class OrganizeTests(TempLibraryTestCase):
         result = library.organize(show)
 
         season = show.library_dir / "Season 01"
-        self.assertEqual(result.moved, 2)
+        self.assertEqual((result.moved, result.renamed), (2, 2))
         self.assertTrue((season / "S01E01 - Part One [bbbbbbbbbbb].mp4").exists())
         moved = season / "S01E02 - Part Two [aaaaaaaaaaa].mkv"
         self.assertTrue(moved.exists())

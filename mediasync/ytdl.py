@@ -27,15 +27,18 @@ from yt_dlp.postprocessor.common import PostProcessor
 from yt_dlp.utils import DownloadCancelled, ExistingVideoReached, parse_bytes
 
 from . import __version__, config
+from .logs import DETAIL, YTDLP_LOGGER
 from .metadata import slim_info
 from .util import sanitize_filename, truncate_utf8, write_atomic
 
 log = logging.getLogger(__name__)
+ytdlp_log = logging.getLogger(YTDLP_LOGGER)
 
 _CHANNEL_MARKERS = ("/@", "/channel/", "/user/", "/c/")
 _CHANNEL_TABS = ("/videos", "/shorts", "/live", "/streams", "/playlists")
 _USER_AGENT = f"MediaSyncArchiver/{__version__} (+personal offline archive)"
 _FEED_NS = {"atom": "http://www.w3.org/2005/Atom", "yt": "http://www.youtube.com/xml/schemas/2015"}
+_UNAVAILABLE_TITLES = ("[Private video]", "[Deleted video]")  # how playlists list videos nobody can watch
 
 
 class TaskHooks(Protocol):
@@ -76,10 +79,12 @@ def _http_get(url: str, timeout: float = 20) -> bytes | None:
     request = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            return response.read()
+            data = response.read()
     except (urllib.error.URLError, OSError, ValueError) as e:
         log.debug("GET %s failed: %s", url, e)
         return None
+    log.debug("GET %s (%d bytes)", url, len(data))
+    return data
 
 
 def recent_upload_ids(channel_id: str) -> list[str] | None:
@@ -116,22 +121,33 @@ def download_thumbnail(video_id: str, url: str, dst: Path) -> bool:
 # --------------------------------------------------------------------------- yt-dlp
 
 class _Logger:
+    """yt-dlp's messages go to the log file only; its errors also go to the task report."""
+
     def __init__(self, hooks: TaskHooks):
         self.hooks = hooks
 
     def debug(self, msg: str) -> None:
-        log.debug("yt-dlp: %s", msg)
+        ytdlp_log.debug("yt-dlp: %s", msg)
 
     info = debug
 
     def warning(self, msg: str) -> None:
-        log.warning("yt-dlp: %s", msg)
+        ytdlp_log.warning("yt-dlp: %s", msg.removeprefix("WARNING: "))
         self.hooks.warning(msg)
 
     def error(self, msg: str) -> None:
         msg = msg.removeprefix("ERROR: ")
-        log.error("yt-dlp: %s", msg)
+        ytdlp_log.error("yt-dlp: %s", msg)
         self.hooks.error(msg)
+
+
+def _skip_unavailable(info: dict, *, incomplete: bool) -> str | None:
+    """yt-dlp match_filter: playlist entries that YouTube already lists as private or deleted are
+    skipped without requesting them (they would only fail, on every update)."""
+    if info.get("title") in _UNAVAILABLE_TITLES:
+        log.log(DETAIL, "Skipping %s: listed as %s", info.get("id"), info["title"])
+        return f"{info.get('id')} is listed as {info['title']}"
+    return None
 
 
 class _CancelCheck(PostProcessor):
@@ -172,6 +188,7 @@ def _base_options(hooks: TaskHooks, staging: Path) -> dict:
         ],
         "js_runtimes": {name: dict(opts) for name, opts in config.JS_RUNTIMES.items()},
         "ignoreerrors": True,  # one unavailable video must not abort a whole playlist
+        "match_filter": _skip_unavailable,
         "quiet": True,
         "noprogress": True,
         "logger": _Logger(hooks),

@@ -1,4 +1,5 @@
 """End-to-end tests of Update/Repair through the real engine, with yt-dlp replaced by a fake."""
+import errno
 import threading
 import time
 import unittest
@@ -22,6 +23,7 @@ class FakeSession:
     source: dict[str, dict] = {}       # video id -> info dict of the videos "on YouTube"
     playlist: list[str] = []           # ids currently in the playlist
     gate: threading.Event | None = None
+    fail_with: Exception | None = None
     calls: list = []
 
     def __init__(self, url, mode, hooks, limit=None):
@@ -38,6 +40,8 @@ class FakeSession:
 
     def download(self, staging, known, on_video, incremental=False):
         FakeSession.calls.append(("download", set(known), incremental))
+        if self.fail_with:
+            raise self.fail_with
         self._fetch([vid for vid in self.playlist if vid not in known], staging, on_video)
 
     def download_ids(self, ids, staging, known, on_video):
@@ -87,6 +91,7 @@ class SyncTests(TempLibraryTestCase):
         }
         FakeSession.playlist = ["aaaaaaaaaaa", "bbbbbbbbbbb"]
         FakeSession.gate = None
+        FakeSession.fail_with = None
         FakeSession.calls = []
         FETCH_CALLS.clear()
         NO_SUBTITLES.clear()
@@ -176,7 +181,7 @@ class SyncTests(TempLibraryTestCase):
 
         restore = self.run_and_wait(Task("restore", url=url, name="Resolved Show"))
         self.assertEqual(restore.downloaded, 1)
-        self.assertEqual(restore.summary(), "1 restored video")
+        self.assertTrue(restore.summary().startswith("1 restored video"), restore.summary())
         self.assertTrue(first.exists())
 
     def test_channel_updates_check_the_feed_first(self):
@@ -255,6 +260,21 @@ class SyncTests(TempLibraryTestCase):
         self.engine.wait_until_idle()
         self.assertEqual(self.engine.history[0].status, "cancelled")
         self.assertEqual(self.engine.status()["queue"], [])
+
+    def test_full_disk_pauses_and_resume_continues(self):
+        FakeSession.fail_with = OSError(errno.ENOSPC, "No space left on device")
+        self.engine.enqueue(Task("update", url="https://x/playlist?list=PL", name="Course"))
+        self.assertTrue(self.engine.wait_until_idle(timeout=30))
+        status = self.engine.status()
+        self.assertEqual(status["state"], "paused")
+        self.assertEqual([t["name"] for t in status["queue"]], ["Course"])
+        self.assertEqual(list(self.engine.history), [])
+
+        FakeSession.fail_with = None  # space was freed
+        self.engine.resume()
+        self._wait_for(lambda: self.engine.history)
+        self.engine.wait_until_idle()
+        self.assertEqual(self.engine.history[0].downloaded, 2)
 
     def test_duplicate_tasks_are_ignored(self):
         FakeSession.gate = threading.Event()

@@ -8,6 +8,7 @@ import urllib.error
 import urllib.request
 
 from . import config
+from .logs import DETAIL
 
 log = logging.getLogger(__name__)
 
@@ -25,6 +26,6 @@ def scan_library() -> None:
     try:
         with urllib.request.urlopen(request, timeout=10):
             pass
-        log.info("Asked Kodi to rescan its video library")
+        log.log(DETAIL, "Asked Kodi to rescan its video library")
     except (urllib.error.URLError, OSError) as e:
         log.warning("Could not reach Kodi at %s: %s", url, e)

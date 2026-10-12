@@ -13,6 +13,7 @@ renaming, NFOs) runs as jobs on the processing thread, so the next video downloa
 """
 from __future__ import annotations
 
+import itertools
 import logging
 import threading
 from dataclasses import dataclass, field
@@ -22,6 +23,7 @@ from typing import Callable, Protocol
 
 from . import config, library, media
 from .library import LibraryVideo, Show
+from .logs import DETAIL
 from .metadata import ShowState, VideoInfo
 from .subscriptions import Subscription, subscriptions
 from .util import move_file, read_json, remove_empty_dirs, video_id_from_name
@@ -29,6 +31,7 @@ from .util import move_file, read_json, remove_empty_dirs, video_id_from_name
 log = logging.getLogger(__name__)
 
 KINDS = ("update", "repair", "restore")
+_report_ids = itertools.count(1)
 _IMAGE_EXTS = (".jpg", ".jpeg", ".webp", ".png")
 
 
@@ -64,6 +67,7 @@ class Report:
     status: str = "ok"              # ok | warning | error | cancelled
     note: str = ""
     finished: datetime | None = None
+    id: int = field(default_factory=lambda: next(_report_ids))
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def error(self, message: str) -> None:
@@ -101,8 +105,8 @@ class Report:
 
     def as_dict(self) -> dict:
         return {
-            "name": self.name, "kind": self.kind, "status": self.status, "summary": self.summary(),
-            "errors": self.errors[-5:], "finished": self.finished.strftime("%H:%M") if self.finished else "",
+            "id": self.id, "name": self.name, "kind": self.kind, "status": self.status, "summary": self.summary(),
+            "errors": list(self.errors), "finished": self.finished.strftime("%H:%M") if self.finished else "",
         }
 
 
@@ -219,13 +223,16 @@ def run_task(task: Task, ctx: Context, session_factory=None) -> None:
             deleted = library.deleted_ids(show, store) - busy - staged.keys()
 
         for vid, path in staged.items():
-            log.info("%s: resuming processing of %s", show.name, path.name)
+            log.log(DETAIL, "%s: resuming processing of %s", show.name, path.name)
             ctx.submit(f"Processing {path.name}", show, lambda p=path: process_download(show, p, None, report), vid)
 
         broken = {c.video.id: c.problem for c in checks if c.problem}
         for vid, problem in broken.items():
             report.error(f"{vid}: {problem} - downloading it again")
         known = ({c.video.id for c in checks} | set(store.videos) | staged.keys() | busy) - broken.keys()
+        log.debug("%s: %d videos in the library, %d known in total, %d deleted, %d waiting in downloads, "
+                  "%d being processed, %d broken", show.name, len(checks), len(known), len(deleted),
+                  len(staged), len(busy), len(broken))
 
         handed_off: set[str] = set()
 
@@ -272,7 +279,9 @@ def _fix_existing(task: Task, ctx: Context, show: Show, checks: list[VideoCheck]
         missing = set(c.missing)
         if "subtitles" in missing and task.kind == "update" and state.subtitles_recently_failed(c.video.id):
             missing.discard("subtitles")  # failed recently; try again in a few days (or with Repair)
+            log.debug("%s: not retrying subtitles yet (failed recently)", c.video.path.name)
         if missing or task.refresh_metadata:
+            log.debug("%s: missing %s", c.video.path.name, ", ".join(sorted(missing)) or "nothing (refreshing metadata)")
             to_fix[c.video.id] = (c, missing)
 
     fetch = {vid: (missing & {"metadata", "subtitles"}) | ({"metadata"} if task.refresh_metadata else set())
@@ -307,8 +316,12 @@ def _download_new(task: Task, ctx: Context, session, show: Show, store, state: S
         channel_id = store.channel_id()
         recent = ytdl.recent_upload_ids(channel_id) if channel_id else None
         if recent is not None and all(vid in known for vid in recent):
+            log.debug("%s: the channel's feed lists no new uploads; not listing the channel", show.name)
             ctx.report.note = "Checked the channel's feed:"
             return False
+        log.debug("%s: %s; listing the channel up to the first archived video", show.name,
+                  "no channel ID known" if not channel_id else "the feed could not be read" if recent is None else
+                  f"the feed lists {sum(vid not in known for vid in recent)} new upload(s)")
         ctx.set_phase("Checking for new videos")
         session.download(show.staging_dir, known, on_video, incremental=True)
         return False
@@ -391,7 +404,8 @@ def process_download(show: Show, staged_video: Path, info: dict | None, report: 
         tmp = show.library_dir / f".tmp-{vid}{staged_video.suffix.lower()}"
         move_file(staged_video, tmp)
 
-    library.organize(show, incoming={vid: tmp}, thumbnails={vid: cover} if cover else None)
+    result = library.organize(show, incoming={vid: tmp}, thumbnails={vid: cover} if cover else None)
+    report.count_fix("file names", result.renamed)
     _clear_staged(staging, vid)
     report.count_download(replaced)
     log.info("%s: added %s", show.name, (meta.title if meta else vid))
@@ -444,6 +458,7 @@ def fix_video(show: Show, vid: str, missing: set[str], report: Report) -> None:
 
     result = library.organize(show, thumbnails={vid: thumb} if thumb else None)
     report.count_fix("artwork", result.artwork_created)
+    report.count_fix("file names", result.renamed)
     _clear_staged(staging, vid)
 
 
@@ -459,6 +474,7 @@ def finalize_show(show: Show, report: Report, refresh_art: bool = False, listing
         result = library.organize(show, playlist_art=playlist_art, refresh_art=refresh_art)
         report.count_fix("nfo files", result.nfos_written)
         report.count_fix("artwork", result.artwork_created)
+        report.count_fix("file names", result.renamed)
         if result.unidentified:
             report.error(f"Left alone (no YouTube ID found): {', '.join(result.unidentified[:5])}")
         if listing_complete:

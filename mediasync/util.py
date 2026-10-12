@@ -52,6 +52,14 @@ def clean_text_for_xml(text: str | None) -> str:
     return "".join(ch for ch in cleaned if (ord(ch) >= 32 or ch in "\n\r\t") and ord(ch) <= 0xFFFF)
 
 
+def is_disk_full(error: BaseException | str) -> bool:
+    """True for "No space left on device", whether raised here or reported as text by yt-dlp."""
+    if isinstance(error, OSError) and error.errno == errno.ENOSPC:
+        return True
+    text = str(error)
+    return "No space left on device" in text or "not enough space on the disk" in text
+
+
 def read_json(path: Path) -> dict | None:
     try:
         with open(path, encoding="utf-8") as f:

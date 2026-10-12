@@ -76,6 +76,8 @@ class Settings:
     kodi_url: str = ""
     kodi_username: str = "kodi"
     kodi_password: str = ""
+    # [logging]
+    detailed_log: bool = False
 
     def validate(self) -> None:
         """Raises ValueError with a readable message for settings that cannot work."""
@@ -98,6 +100,7 @@ _SECTIONS = {
     "schedule": ("auto_update_hours",),
     "web": ("host", "port"),
     "kodi": ("kodi_url", "kodi_username", "kodi_password"),
+    "logging": ("detailed_log",),
 }
 _COMMENTS = {
     "shows_dir": "Kodi 'TV shows' source: channels and playlists",
@@ -110,6 +113,7 @@ _COMMENTS = {
     "auto_update_hours": f"check subscriptions every N hours (0 = only when you ask; minimum {MIN_AUTO_UPDATE_HOURS})",
     "host": "127.0.0.1 = this computer only; 0.0.0.0 = any device on your network",
     "kodi_url": "optional, e.g. http://localhost:8080/jsonrpc to make Kodi rescan after downloads",
+    "detailed_log": "also write every YouTube request and decision to the log file (for troubleshooting)",
 }
 
 
@@ -189,6 +193,7 @@ def save(settings: Settings) -> None:
 settings = Settings()
 SUBSCRIPTIONS_FILE = CONFIG_DIR / "subscriptions.json"
 STATE_FILE = CONFIG_DIR / "state.json"
+LOG_DIR = CONFIG_DIR / "logs"
 SHOWS_DIR = Path()
 MOVIES_DIR = Path()
 STAGING_DIR = Path()

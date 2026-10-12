@@ -230,6 +230,13 @@
                     </div>
                     <div class="col-12 small muted">Enable it in Kodi under Settings › Services › Control › "Allow remote control via HTTP".</div>
                 </div>
+
+                <h3 class="h6 text-primary mt-4">Troubleshooting</h3>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" role="switch" id="s-detailed_log">
+                    <label class="form-check-label" for="s-detailed_log">Detailed log: also record every YouTube request and why each video is skipped, fixed or downloaded</label>
+                </div>
+                <div class="small muted mt-1">The console only shows the important lines. Everything else is in the log files in <code id="log-dir"></code> (one file per day).</div>
             </div>
             <div class="modal-footer justify-content-between">
                 <span class="small muted truncate" id="settings-file"></span>
@@ -246,6 +253,9 @@
 const $ = (id) => document.getElementById(id);
 let libraryVersion = null;
 let paused = false;
+let lastQueue = null;
+let lastHistory = null;
+const openDetails = new Set();  // activity entries whose Details are expanded
 
 function el(tag, attrs = {}, ...children) {
     const node = document.createElement(tag);
@@ -385,28 +395,42 @@ function renderStatus(s) {
     $('processing').textContent = p.current ? `${p.current}${p.pending ? ` (+${p.pending} waiting)` : ''}` : 'idle';
 
     $('queue-count').textContent = s.queue.length;
-    $('queue-list').replaceChildren(...(s.queue.length ? s.queue.map((t) => el('li',
-        {class: 'list-group-item bg-transparent d-flex justify-content-between align-items-center px-0'},
-        el('span', {class: 'truncate'}, icon('fa-clock text-warning'), ` ${t.name} `, el('span', {class: 'badge bg-secondary', text: t.kind})),
-        el('button', {class: 'btn btn-sm btn-outline-secondary', title: 'Remove from queue',
-            onclick: () => post('/api/queue/remove', {id: t.id})}, icon('fa-xmark')),
-    )) : [el('li', {class: 'list-group-item bg-transparent muted px-0', text: 'Queue is empty.'})]));
-
-    const statusIcon = {ok: 'fa-circle-check text-success', warning: 'fa-triangle-exclamation text-warning',
-                        error: 'fa-circle-xmark text-danger', cancelled: 'fa-ban text-secondary'};
-    $('history-list').replaceChildren(...(s.history.length ? s.history.map((h) => el('div', {class: 'history-item py-2'},
-        el('div', {class: 'd-flex justify-content-between'},
-            el('span', {class: 'truncate'}, icon(statusIcon[h.status] || 'fa-circle'), ` ${h.name}`),
-            el('span', {class: 'muted ms-2', text: `${h.kind} ${h.finished}`})),
-        el('div', {class: 'muted', text: h.summary}),
-        h.errors.length ? el('details', {}, el('summary', {class: 'muted', text: 'Details'}),
-            el('ul', {class: 'mb-0 ps-3'}, ...h.errors.map((err) => el('li', {text: err})))) : null,
-    )) : [el('div', {class: 'muted', text: 'Nothing has run yet.'})]));
+    // Lists are only rebuilt when they change, so open Details and selected text survive the refresh.
+    const queueJson = JSON.stringify(s.queue);
+    if (queueJson !== lastQueue) { lastQueue = queueJson; renderQueue(s.queue); }
+    const historyJson = JSON.stringify(s.history);
+    if (historyJson !== lastHistory) { lastHistory = historyJson; renderHistory(s.history); }
 
     if (s.library_version !== libraryVersion) {
         libraryVersion = s.library_version;
         refreshLibrary();
     }
+}
+
+function renderQueue(queue) {
+    $('queue-list').replaceChildren(...(queue.length ? queue.map((t) => el('li',
+        {class: 'list-group-item bg-transparent d-flex justify-content-between align-items-center px-0'},
+        el('span', {class: 'truncate'}, icon('fa-clock text-warning'), ` ${t.name} `, el('span', {class: 'badge bg-secondary', text: t.kind})),
+        el('button', {class: 'btn btn-sm btn-outline-secondary', title: 'Remove from queue',
+            onclick: () => post('/api/queue/remove', {id: t.id})}, icon('fa-xmark')),
+    )) : [el('li', {class: 'list-group-item bg-transparent muted px-0', text: 'Queue is empty.'})]));
+}
+
+const STATUS_ICONS = {ok: 'fa-circle-check text-success', warning: 'fa-triangle-exclamation text-warning',
+                      error: 'fa-circle-xmark text-danger', cancelled: 'fa-ban text-secondary'};
+
+function renderHistory(history) {
+    $('history-list').replaceChildren(...(history.length ? history.map((h) => el('div', {class: 'history-item py-2'},
+        el('div', {class: 'd-flex justify-content-between'},
+            el('span', {class: 'truncate'}, icon(STATUS_ICONS[h.status] || 'fa-circle'), ` ${h.name}`),
+            el('span', {class: 'muted ms-2', text: `${h.kind} ${h.finished}`})),
+        el('div', {class: 'muted', text: h.summary}),
+        h.errors.length ? el('details', {
+                open: openDetails.has(h.id) ? '' : false,
+                ontoggle: (e) => e.target.open ? openDetails.add(h.id) : openDetails.delete(h.id),
+            }, el('summary', {class: 'muted', text: `Details (${h.errors.length})`}),
+            el('ul', {class: 'mb-0 ps-3'}, ...h.errors.map((err) => el('li', {text: err})))) : null,
+    )) : [el('div', {class: 'muted', text: 'Nothing has run yet.'})]));
 }
 
 async function refreshStatus() {
@@ -460,7 +484,8 @@ async function refreshLibrary() {
 // ---------------------------------------------------------------- settings
 
 const SETTING_FIELDS = ['shows_dir', 'movies_dir', 'downloads_dir', 'max_height', 'subtitle_languages',
-                        'auto_update_hours', 'gentle', 'host', 'port', 'kodi_url', 'kodi_username', 'kodi_password'];
+                        'auto_update_hours', 'gentle', 'host', 'port', 'kodi_url', 'kodi_username', 'kodi_password',
+                        'detailed_log'];
 
 function ensureOption(select, value) {
     if (![...select.options].some((o) => o.value === String(value))) {
@@ -481,6 +506,7 @@ async function loadSettings() {
         }
     }
     $('settings-file').textContent = `Saved in ${data.config_file}`;
+    $('log-dir').textContent = data.log_dir;
     $('welcome-shows').textContent = s.shows_dir;
     $('welcome-movies').textContent = s.movies_dir;
 }

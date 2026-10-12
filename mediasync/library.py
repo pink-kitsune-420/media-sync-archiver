@@ -22,6 +22,7 @@ from datetime import datetime
 from pathlib import Path
 
 from . import artwork, config, media, nfo
+from .logs import DETAIL
 from .metadata import MetadataStore, VideoInfo
 from .util import (
     is_fragment, move_file, remove_empty_dirs, sanitize_filename, truncate_utf8, video_id_from_name,
@@ -83,6 +84,7 @@ class Placement:
 @dataclass
 class OrganizeResult:
     moved: int = 0
+    renamed: int = 0  # files that were already in the library (moved also counts new arrivals)
     removed: list[str] = field(default_factory=list)
     nfos_written: int = 0
     artwork_created: int = 0
@@ -338,8 +340,9 @@ def organize(show: Show, *, incoming: dict[str, Path] | None = None, thumbnails:
     placements = plan_layout(show, videos, store)
     for pl in placements:
         if pl.video.path != pl.target:
-            if not pl.video.path.name.startswith("."):
-                log.info("%s: %s -> %s", show.name, pl.video.path.name, pl.target.relative_to(root))
+            if not pl.video.path.name.startswith("."):  # not a new arrival (.tmp-<id>)
+                log.log(DETAIL, "%s: renaming %s -> %s", show.name, pl.video.path.name, pl.target.relative_to(root))
+                result.renamed += 1
             move_video(pl.video.path, pl.target)
             pl.video.path = pl.target
             result.moved += 1
@@ -540,10 +543,17 @@ def _catalog_entry(show: Show, url: str | None, limit: int | None, subscribed: b
         "subscribed": subscribed,
         "videos": len(files),
         "deleted": deleted,
-        "size": sum(f.stat().st_size for f in files),
+        "size": sum(_size(f) for f in files),
         "location": location,
         "partial": partial,
     }
+
+
+def _size(path: Path) -> int:
+    try:
+        return path.stat().st_size
+    except OSError:  # renamed or deleted meanwhile by the processing thread
+        return 0
 
 
 def _guess_url(show: Show) -> str | None:

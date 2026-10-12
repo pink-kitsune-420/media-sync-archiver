@@ -5,7 +5,7 @@ from dataclasses import asdict, replace
 
 from flask import Flask, jsonify, render_template, request
 
-from . import __version__, config, library
+from . import __version__, config, library, logs
 from .engine import Engine
 from .subscriptions import normalize_limit, normalize_mode, subscriptions
 from .sync import Task
@@ -112,7 +112,7 @@ def create_app(engine: Engine) -> Flask:
     @app.get("/api/settings")
     def get_settings():
         return jsonify(settings=asdict(config.settings), config_file=str(config.config_file()),
-                       version=__version__)
+                       log_dir=str(config.LOG_DIR), version=__version__)
 
     @app.post("/api/settings")
     def save_settings():
@@ -124,6 +124,7 @@ def create_app(engine: Engine) -> Flask:
             return _error(str(e))
         config.apply(new)
         engine.apply_settings()
+        logs.set_detailed(new.detailed_log)
         restart = [k for k in _RESTART_SETTINGS if current[k] != getattr(new, k)]
         message = "Settings saved." + (" Restart the app for the new address to take effect." if restart else "")
         return jsonify(message=message, settings=asdict(new))
