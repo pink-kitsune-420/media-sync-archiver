@@ -48,6 +48,7 @@ class TaskContext:
         self.report = task.report
         self.show: Show | None = None
         self._last_log = 0.0
+        self._logged_title = ""
 
     def check_cancelled(self) -> None:
         if self._engine._cancel.is_set():
@@ -76,9 +77,12 @@ class TaskContext:
                 "eta": format_duration(d.get("eta")) if d.get("eta") is not None else "",
             })
             now = time.monotonic()
-            if now - self._last_log > 30:
+            if info["title"] != self._logged_title:  # first progress report of a new video
+                self._logged_title, self._last_log = info["title"], now
+                log.info("Started downloading %s", info["title"])
+            elif now - self._last_log > 30 and total:
                 self._last_log = now
-                log.info("Downloading %s (%s)", info["title"], d.get("_percent_str", "").strip())
+                log.info("Still downloading %s: %d%% done", info["title"], done / total * 100)
         elif d["status"] == "finished":
             self._engine._update_progress({"phase": "Merging", "video": info["title"], "percent": 100.0,
                                            "speed": "", "eta": ""})
