@@ -17,6 +17,8 @@ internet. Updates fetch only what is new or missing.
   downloads and fixes them. **Restore** brings back videos you deleted.
 - Downloads and processing run side by side: the next video downloads while the last one is
   being finished.
+- **Several libraries**, for example one on this computer and one on an external drive. While a drive
+  is unplugged its shows are left alone, never downloaded again somewhere else.
 - A web dashboard to manage everything, plus terminal commands for scheduled jobs.
 
 ## What it's for (and what it isn't)
@@ -82,6 +84,8 @@ downloads start failing.
 3. That's it. New downloads appear after Kodi's next library update. Optionally let the app trigger
    that for you (Settings › Kodi).
 
+If you add more libraries (see below), add each library's Shows and Movies folders the same way.
+
 **Jellyfin:** add the same folders as a *Shows* and a *Movies* library. Jellyfin reads the `.nfo` files
 and artwork too.
 
@@ -96,10 +100,29 @@ and artwork too.
 | **Restore** | Downloads the videos you deleted from the library again. | Only for those videos |
 | **Update all** | Update for every subscribed show, one at a time (movies are skipped: they never get new videos). | Same as Update, for each show |
 | **Repair all** | Repair for everything in the library, including items you've unsubscribed from. | Same as Repair, for each item |
+| **Download again** | Only offered when a show's folder has gone missing: downloads all of it again from scratch. | Yes, everything |
 
 Videos you delete yourself **stay deleted**: Update never downloads them again, and the other episodes
 keep their numbers. The library list shows how many were deleted, and Restore brings them back in
 their old place.
+
+## Libraries and external drives
+
+A library is a Shows folder plus a Movies folder. You start with one; add more under
+**Settings › Libraries**, e.g. *MediaDrive* with `/media/you/MediaDrive/YouTube/Shows` and
+`/media/you/MediaDrive/YouTube/Movies`. When you add something, you choose which library it goes in.
+
+- **Unplugged drives are safe.** A library whose folders can't be found is shown as *not connected*:
+  its shows say *drive not connected*, and Update all, Repair all and automatic checks skip them.
+  Nothing is downloaded for them and nothing is created where the drive was. Plug the drive in and
+  they're back.
+- **Moving folders yourself is fine.** If you move a show's folder to another library, the app finds it
+  there and keeps updating it in its new place.
+- **Download once, even then.** If a show you downloaded before can't be found anywhere, it's marked
+  *folder missing* instead of being downloaded again. Use **Download again** only if you really
+  want to start over.
+- New downloads wait in the app's downloads folder on this computer and are moved into the library
+  when they're finished.
 
 ## Command line
 
@@ -107,13 +130,14 @@ Everything the dashboard does also works from a terminal (in the project folder)
 
 ```
 python3 run.py                          open the dashboard
-python3 run.py add URL [--as movie|playlist|years] [--name NAME] [--limit N]
+python3 run.py add URL [--as movie|playlist|years] [--name NAME] [--limit N] [--library NAME]
 python3 run.py update [NAME ...]        update every subscribed show, or just these
+python3 run.py update --download-again NAME   download a show whose folder is missing from scratch
 python3 run.py repair [NAME ...]        repair the whole library, or just these
 python3 run.py restore NAME ...         download deleted videos again
 python3 run.py list                     what is subscribed and in the library
 python3 run.py clean                    remove leftover junk and unfinished downloads (asks first)
-python3 run.py config                   where settings, subscriptions and videos live
+python3 run.py config                   where settings, libraries and logs are
 ```
 
 `python3 run.py update` works well as a nightly cron job or scheduled task. The dashboard can also
@@ -162,7 +186,7 @@ Movies/
 
 Everything can be changed on the dashboard's **Settings** page or in `config.toml`
 (`python3 run.py config` shows where it is: `~/.config/mediasync/` on Linux, `%APPDATA%\mediasync` on Windows,
-`~/Library/Application Support/mediasync` on macOS). Library folders, maximum quality (default 1080p),
+`~/Library/Application Support/mediasync` on macOS). Libraries, maximum quality (default 1080p),
 subtitle languages, speed limit, gentle mode, automatic checks, who can open the dashboard, the
 optional Kodi rescan, and a detailed log. Set `MEDIASYNC_HOME` to keep settings and downloads somewhere else (e.g. a USB drive).
 
@@ -173,6 +197,9 @@ optional Kodi rescan, and a detailed log. Set `MEDIASYNC_HOME` to keep settings 
   (`python3 run.py config` shows where). Switch on *Settings › Detailed log* to also record every
   YouTube request; attach that day's log file when you report a problem.
 - **Disk full:** downloading pauses by itself. Free up some space, then press *Resume*.
+- **A show says "drive not connected" or "folder missing":** plug in the drive it's on (or move its
+  folder back), then refresh. A new drive without library folders yet: press *Create folders* next
+  to it under Settings › Libraries.
 - **"Sign in to confirm you're not a bot", HTTP 403 or 429 errors:** make sure Deno (or Node.js) is
   installed, keep gentle mode on, and update yt-dlp: `python3 run.py --upgrade`.
   YouTube changes often, and a fresh yt-dlp usually fixes it.

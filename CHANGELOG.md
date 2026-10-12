@@ -5,6 +5,22 @@ Version numbers follow [semantic versioning](https://semver.org): MAJOR.MINOR.PA
 
 ## [Unreleased]
 
+### Added
+- **Several libraries** (Settings › Libraries), for example one on this computer and one on an
+  external drive, each with its own Shows and Movies folder. You choose the library when adding
+  something (`add --library NAME` on the command line); the first one is the default.
+- **External drives that aren't always connected:** while a library's folders can't be found, its
+  items are shown as *drive not connected* and skipped by Update all, Repair all and automatic
+  checks. Nothing is downloaded for them, and no folders are created where the drive was.
+- A show's folder moved to another library by hand is found there and updated in its new place.
+- A show that was downloaded before but whose folder is gone is marked *folder missing* instead of
+  being downloaded again from scratch; **Download again** (`update --download-again NAME`) does
+  that on purpose.
+
+### Changed
+- Settings from 1.0 become the first library, called "This computer". Subscriptions from 1.0 count
+  as downloaded, so a show whose folder is away is never downloaded again by accident.
+
 ### Fixed
 - The log file no longer contains terminal color codes from yt-dlp.
 

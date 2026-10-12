@@ -160,7 +160,7 @@ class OrganizeTests(TempLibraryTestCase):
         subscriptions.upsert(Subscription("Wanted", "https://www.youtube.com/@x", "years"))
         placeholder(config.MOVIES_DIR / "A Movie" / "A Movie [aaaaaaaaaaa].mkv", size=2048)
         entries = {e["name"]: e for e in library.catalog(subscriptions.all())}
-        self.assertEqual(entries["Wanted"]["location"], "missing")
+        self.assertEqual(entries["Wanted"]["location"], "new")
         self.assertEqual(entries["A Movie"]["mode"], "movie")
         self.assertEqual(entries["A Movie"]["videos"], 1)
         self.assertFalse(entries["A Movie"]["subscribed"])

@@ -56,13 +56,44 @@ CONFIG_DIR = _platform_dir("config")
 CACHE_DIR = _platform_dir("cache")
 
 
+DEFAULT_LIBRARY_NAME = "This computer"
+
+
+@dataclass
+class Library:
+    """A place for videos: a Shows folder (Kodi "TV shows" source) and a Movies folder (Kodi "Movies"
+    source). A library whose folders are missing, e.g. on a drive that is not plugged in, is offline:
+    it is shown but left alone, and nothing is downloaded for it."""
+    name: str
+    shows_dir: str
+    movies_dir: str
+
+    @property
+    def shows_path(self) -> Path:
+        return Path(self.shows_dir).expanduser()
+
+    @property
+    def movies_path(self) -> Path:
+        return Path(self.movies_dir).expanduser()
+
+    def path_for(self, is_movie: bool) -> Path:
+        return self.movies_path if is_movie else self.shows_path
+
+    @property
+    def online(self) -> bool:
+        return self.shows_path.is_dir() or self.movies_path.is_dir()
+
+
+def _default_libraries() -> list[Library]:
+    return [Library(DEFAULT_LIBRARY_NAME, "~/Videos/YouTube/Shows", "~/Videos/YouTube/Movies")]
+
+
 @dataclass
 class Settings:
-    # [library]
-    shows_dir: str = "~/Videos/YouTube/Shows"
-    movies_dir: str = "~/Videos/YouTube/Movies"
-    downloads_dir: str = ""
+    # [[libraries]]
+    libraries: list[Library] = field(default_factory=_default_libraries)
     # [downloads]
+    downloads_dir: str = ""
     max_height: int = 1080
     subtitle_languages: list[str] = field(default_factory=lambda: ["en"])
     speed_limit: str = ""
@@ -81,8 +112,14 @@ class Settings:
 
     def validate(self) -> None:
         """Raises ValueError with a readable message for settings that cannot work."""
-        if not self.shows_dir.strip() or not self.movies_dir.strip():
-            raise ValueError("The shows and movies folders must be set.")
+        if not self.libraries:
+            raise ValueError("At least one library is needed.")
+        names = [lib.name.casefold() for lib in self.libraries]
+        if not all(names) or len(set(names)) != len(names):
+            raise ValueError("Every library needs a name of its own.")
+        for lib in self.libraries:
+            if not lib.shows_dir.strip() or not lib.movies_dir.strip():
+                raise ValueError(f"Library '{lib.name}': the shows and movies folders must be set.")
         if self.max_height not in (360, 480, 720, 1080, 1440, 2160):
             raise ValueError("Maximum quality must be one of 360, 480, 720, 1080, 1440 or 2160.")
         if not self.subtitle_languages or not all(isinstance(x, str) and x for x in self.subtitle_languages):
@@ -95,16 +132,13 @@ class Settings:
 
 # section -> fields, also the order used when writing config.toml
 _SECTIONS = {
-    "library": ("shows_dir", "movies_dir", "downloads_dir"),
-    "downloads": ("max_height", "subtitle_languages", "speed_limit", "gentle"),
+    "downloads": ("downloads_dir", "max_height", "subtitle_languages", "speed_limit", "gentle"),
     "schedule": ("auto_update_hours",),
     "web": ("host", "port"),
     "kodi": ("kodi_url", "kodi_username", "kodi_password"),
     "logging": ("detailed_log",),
 }
 _COMMENTS = {
-    "shows_dir": "Kodi 'TV shows' source: channels and playlists",
-    "movies_dir": "Kodi 'Movies' source: single videos",
     "downloads_dir": "where unfinished downloads wait (empty = the app's cache folder)",
     "max_height": "highest video quality to download: 720, 1080, 1440 or 2160",
     "subtitle_languages": "subtitle languages to embed when YouTube has them",
@@ -132,8 +166,17 @@ def _toml_value(value) -> str:
     return f'"{escaped}"'
 
 
+_LIBRARIES_COMMENT = """\
+# Libraries: each has a Shows folder (Kodi 'TV shows' source: channels and playlists) and a Movies
+# folder (Kodi 'Movies' source: single videos). The first one is the default for new downloads.
+# A library on a drive that is not plugged in is shown as offline and left alone."""
+
+
 def to_toml(settings: Settings) -> str:
-    lines = ["# Media Sync Archiver settings. Edit here or on the dashboard's Settings page.", ""]
+    lines = ["# Media Sync Archiver settings. Edit here or on the dashboard's Settings page.", "",
+             _LIBRARIES_COMMENT]
+    for lib in settings.libraries:
+        lines += ["[[libraries]]", *(f"{key} = {_toml_value(value)}" for key, value in asdict(lib).items()), ""]
     values = asdict(settings)
     for section, names in _SECTIONS.items():
         lines.append(f"[{section}]")
@@ -145,18 +188,30 @@ def to_toml(settings: Settings) -> str:
     return "\n".join(lines)
 
 
+def _libraries_from(data: dict, flat: dict) -> list[Library]:
+    entries = data.get("libraries")
+    if isinstance(entries, list) and entries:
+        return [Library(str(e.get("name", "")).strip(), str(e.get("shows_dir", "")).strip(),
+                        str(e.get("movies_dir", "")).strip()) for e in entries if isinstance(e, dict)]
+    if flat.get("shows_dir") or flat.get("movies_dir"):  # settings from version 1.0: one library
+        default = _default_libraries()[0]
+        return [Library(DEFAULT_LIBRARY_NAME, str(flat.get("shows_dir") or default.shows_dir).strip(),
+                        str(flat.get("movies_dir") or default.movies_dir).strip())]
+    return _default_libraries()
+
+
 def from_dict(data: dict) -> Settings:
     """Builds Settings from a flat or sectioned dict, ignoring unknown keys."""
     flat = {}
     for key, value in data.items():
         if isinstance(value, dict):
             flat.update(value)
-        else:
+        elif key != "libraries":
             flat[key] = value
     known = {f.name: f for f in fields(Settings)}
-    kwargs = {}
+    kwargs = {"libraries": _libraries_from(data, flat)}
     for key, value in flat.items():
-        if key not in known:
+        if key not in known or key == "libraries":
             continue
         default = getattr(Settings(), key)
         if isinstance(default, bool):
@@ -194,7 +249,7 @@ settings = Settings()
 SUBSCRIPTIONS_FILE = CONFIG_DIR / "subscriptions.json"
 STATE_FILE = CONFIG_DIR / "state.json"
 LOG_DIR = CONFIG_DIR / "logs"
-SHOWS_DIR = Path()
+SHOWS_DIR = Path()   # the default library's folders
 MOVIES_DIR = Path()
 STAGING_DIR = Path()
 
@@ -203,9 +258,21 @@ def apply(new: Settings) -> None:
     """Makes new the active settings (paths are expanded here once)."""
     global settings, SHOWS_DIR, MOVIES_DIR, STAGING_DIR
     settings = new
-    SHOWS_DIR = Path(new.shows_dir).expanduser()
-    MOVIES_DIR = Path(new.movies_dir).expanduser()
+    SHOWS_DIR = new.libraries[0].shows_path
+    MOVIES_DIR = new.libraries[0].movies_path
     STAGING_DIR = Path(new.downloads_dir).expanduser() if new.downloads_dir else CACHE_DIR / "downloads"
+
+
+def libraries() -> list[Library]:
+    return settings.libraries
+
+
+def default_library() -> Library:
+    return settings.libraries[0]
+
+
+def get_library(name: str | None) -> Library | None:
+    return next((lib for lib in settings.libraries if lib.name == name), None)
 
 
 def video_format() -> str:

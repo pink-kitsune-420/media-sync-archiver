@@ -18,7 +18,8 @@ class WebTests(TempLibraryTestCase):
 
     def test_settings_can_be_read_and_saved(self):
         data = self.client.get("/api/settings").json
-        self.assertEqual(data["settings"]["shows_dir"], config.settings.shows_dir)
+        self.assertEqual(data["settings"]["libraries"][0]["shows_dir"], config.default_library().shows_dir)
+        self.assertEqual(data["online"], {"Main": True})
 
         res = self.client.post("/api/settings", json={**data["settings"], "max_height": "720", "port": 9999})
         self.assertEqual(res.status_code, 200, res.json)
@@ -39,6 +40,26 @@ class WebTests(TempLibraryTestCase):
         res = self.client.post("/api/action", json={"action": "restore", "name": "Course"})
         self.assertEqual(res.status_code, 200, res.json)
         self.assertEqual([t["kind"] for t in self.engine.status()["queue"]], ["restore"])
+
+    def test_libraries_can_be_added_and_offline_items_are_left_alone(self):
+        settings = self.client.get("/api/settings").json["settings"]
+        drive = {"name": "Drive", "shows_dir": str(self.root / "Drive" / "Shows"),
+                 "movies_dir": str(self.root / "Drive" / "Movies")}
+        res = self.client.post("/api/settings", json={**settings, "libraries": [*settings["libraries"], drive]})
+        self.assertEqual(res.status_code, 200, res.json)
+        self.assertEqual(res.json["online"], {"Main": True, "Drive": True})
+        self.assertTrue((self.root / "Drive" / "Shows").is_dir())
+
+        subscriptions.upsert(Subscription("Course", "https://x/playlist?list=PL", library="Drive", archived=True))
+        (self.root / "Drive").rename(self.root / "Drive.unplugged")
+        res = self.client.post("/api/action", json={"action": "update", "name": "Course"})
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("not connected", res.json["error"])
+        self.assertIn("Skipped what is on Drive", self.client.post("/api/sync-all", json={"action": "update"}).json["message"])
+        self.assertEqual(self.engine.status()["queue"], [])
+
+        res = self.client.post("/api/libraries/create", json={"name": "Drive"})  # e.g. a new, empty drive
+        self.assertEqual(res.json["online"]["Drive"], True)
 
     def test_bad_urls_are_refused(self):
         self.assertEqual(self.client.post("/api/queue", json={"url": "not a url"}).status_code, 400)

@@ -20,9 +20,9 @@ from typing import Callable
 from yt_dlp.utils import DownloadCancelled
 
 from . import config, kodi
-from .library import Show
+from .library import LibraryOffline, Show
 from .logs import DETAIL
-from .sync import Report, Task, run_task, submit_finalize, tasks_for_all
+from .sync import Report, Skipped, Task, run_task, submit_finalize, tasks_for_all
 from .util import format_bytes, format_duration, is_disk_full, read_json, write_json
 from .ytdl import parse_rate
 
@@ -281,6 +281,9 @@ class Engine:
                     task.report.status = "cancelled"
                     task.report.note = "Stopped."
                     self._finish(ctx)
+            except Skipped as e:
+                task.report.status, task.report.note = "skipped", str(e)
+                self._record(task.report)
             except Exception as e:  # noqa: BLE001 - a failed task must not kill the thread
                 if is_disk_full(e):
                     self._disk_full()
@@ -350,7 +353,7 @@ class Engine:
                     job.fn()
                 self._library_changed = True
             except Exception as e:  # noqa: BLE001
-                if is_disk_full(e):
+                if is_disk_full(e) or isinstance(e, LibraryOffline):
                     log.error("%s: %s", job.label, e)
                 else:
                     log.exception("Processing failed: %s", job.label)

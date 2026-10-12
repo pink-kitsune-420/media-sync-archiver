@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import threading
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 
 from . import config
 from .util import read_json, write_json
@@ -17,6 +17,8 @@ class Subscription:
     # "playlist": one season in playlist order, "years": one season per upload year, "movie": single video
     mode: str = "playlist"
     limit: int | None = None
+    library: str = ""        # the library it lives in (or will be downloaded to); "" = the default one
+    archived: bool = False   # it has been downloaded: a missing folder then never means "download it all"
 
     @property
     def is_movie(self) -> bool:
@@ -61,6 +63,9 @@ class SubscriptionStore:
                         url=entry["url"],
                         mode=normalize_mode(entry.get("mode")),
                         limit=normalize_limit(entry.get("limit")),
+                        library=str(entry.get("library") or ""),
+                        # version 1.0 subscribed when a download started, so its entries were downloaded
+                        archived=bool(entry.get("archived", "library" not in entry)),
                     ))
             return subs
 
@@ -82,6 +87,19 @@ class SubscriptionStore:
             else:
                 subs.append(sub)
             self._save(subs)
+
+    def set_location(self, name: str, library: str) -> None:
+        """Records that a subscription's files are (now) in this library."""
+        with self._lock:
+            sub = self.get(name)
+            if sub and (sub.library, sub.archived) != (library, True):
+                self.upsert(replace(sub, library=library, archived=True))
+
+    def rename_library(self, old: str, new: str) -> None:
+        with self._lock:
+            subs = self.all()
+            if any(s.library == old for s in subs):
+                self._save([replace(s, library=new) if s.library == old else s for s in subs])
 
     def remove(self, name: str) -> bool:
         with self._lock:

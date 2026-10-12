@@ -35,17 +35,21 @@
     <div class="card p-4 mb-4">
         <h2 class="h5 mb-3"><i class="fa-solid fa-plus text-success"></i> Add a channel, playlist or video</h2>
         <form id="add-form" class="row g-3 align-items-end">
-            <div class="col-lg-4">
+            <div class="col-lg">
                 <label for="add-url" class="form-label">YouTube URL</label>
                 <input type="url" class="form-control" id="add-url" placeholder="https://www.youtube.com/…" required>
             </div>
-            <div class="col-lg-3">
+            <div class="col-lg-2">
                 <label for="add-name" class="form-label">Folder name <span class="muted small">(optional)</span></label>
                 <input type="text" class="form-control" id="add-name" placeholder="Taken from YouTube if blank">
             </div>
             <div class="col-lg-3">
                 <label for="add-mode" class="form-label">Organize as</label>
                 <select id="add-mode" class="form-select"></select>
+            </div>
+            <div class="col-lg-2 d-none" id="add-library-col">
+                <label for="add-library" class="form-label">Library</label>
+                <select id="add-library" class="form-select"></select>
             </div>
             <div class="col-lg-1">
                 <label for="add-limit" class="form-label">Limit</label>
@@ -154,20 +158,15 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <h3 class="h6 text-primary">Library folders</h3>
-                <div class="row g-3 mb-4">
-                    <div class="col-md-6">
-                        <label class="form-label" for="s-shows_dir">Shows (channels &amp; playlists)</label>
-                        <input class="form-control" id="s-shows_dir" required>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label" for="s-movies_dir">Movies (single videos)</label>
-                        <input class="form-control" id="s-movies_dir" required>
-                    </div>
-                    <div class="col-12">
-                        <label class="form-label" for="s-downloads_dir">Unfinished downloads <span class="muted small">(empty = default)</span></label>
-                        <input class="form-control" id="s-downloads_dir" placeholder="the app's cache folder">
-                    </div>
+                <h3 class="h6 text-primary">Libraries</h3>
+                <p class="small muted mb-2">Each library has a <b>Shows</b> folder (channels and playlists; add it to Kodi as a TV shows source)
+                    and a <b>Movies</b> folder (single videos; a Movies source). The first one is the default for new downloads.
+                    A library on a drive that is not plugged in shows as offline and is left alone until you connect it.</p>
+                <div id="library-editor" class="d-flex flex-column gap-2 mb-2"></div>
+                <button type="button" class="btn btn-sm btn-outline-light mb-3" id="add-library-btn"><i class="fa-solid fa-plus"></i> Add a library</button>
+                <div class="mb-4">
+                    <label class="form-label" for="s-downloads_dir">Unfinished downloads <span class="muted small">(empty = default)</span></label>
+                    <input class="form-control" id="s-downloads_dir" placeholder="the app's cache folder">
                 </div>
 
                 <h3 class="h6 text-primary">Downloads</h3>
@@ -336,6 +335,7 @@ $('add-form').addEventListener('submit', async (e) => {
         url: $('add-url').value.trim(),
         name: $('add-name').value.trim(),
         mode: $('add-mode').value,
+        library: $('add-library').value,
         limit: Number.isFinite(limit) ? limit : null,
     });
     if (data) { e.target.reset(); setModeChoices('any'); }
@@ -418,7 +418,8 @@ function renderQueue(queue) {
 }
 
 const STATUS_ICONS = {ok: 'fa-circle-check text-success', warning: 'fa-triangle-exclamation text-warning',
-                      error: 'fa-circle-xmark text-danger', cancelled: 'fa-ban text-secondary'};
+                      error: 'fa-circle-xmark text-danger', cancelled: 'fa-ban text-secondary',
+                      skipped: 'fa-plug text-secondary'};
 
 function renderHistory(history) {
     $('history-list').replaceChildren(...(history.length ? history.map((h) => el('div', {class: 'history-item py-2'},
@@ -442,16 +443,31 @@ async function refreshStatus() {
 
 const MODE_LABELS = {movie: 'Movie', playlist: 'Playlist', years: 'By year'};
 
-function libraryRow(item) {
+function libraryRow(item, showLibrary) {
     const badges = [el('span', {class: 'badge bg-secondary me-1', text: MODE_LABELS[item.mode] || item.mode})];
+    if (showLibrary) badges.push(el('span', {class: 'badge bg-dark border border-info text-info me-1', title: 'Library', text: item.library}));
+    if (item.location === 'offline') badges.push(el('span', {class: 'badge bg-secondary me-1', title: item.note, text: 'drive not connected'}));
+    if (item.location === 'missing') badges.push(el('span', {class: 'badge bg-danger me-1', title: item.note, text: 'folder missing'}));
     if (!item.subscribed) badges.push(el('span', {class: 'badge bg-dark border me-1', title: 'Not subscribed, so "Update all" skips it', text: 'not subscribed'}));
-    if (item.location === 'missing') badges.push(el('span', {class: 'badge bg-info text-dark me-1', text: 'not downloaded yet'}));
+    if (item.location === 'new') badges.push(el('span', {class: 'badge bg-info text-dark me-1', text: 'not downloaded yet'}));
     if (item.partial) badges.push(el('span', {class: 'badge bg-warning text-dark me-1', title: 'Unfinished downloads resume on the next update', text: 'unfinished download'}));
     if (item.deleted) badges.push(el('span', {class: 'badge bg-dark border border-warning text-warning me-1', title: 'Videos you deleted are not downloaded again. Use Restore to get them back.', text: `${item.deleted} deleted`}));
     if (!item.url) badges.push(el('span', {class: 'badge bg-danger me-1', title: 'Source URL unknown: existing files can be checked but no new videos downloaded', text: 'no URL'}));
 
     const action = (kind) => async () => { if (await post('/api/action', {action: kind, name: item.name})) refreshLibrary(); };
-    const missing = item.location === 'missing';
+    const missing = item.location === 'new';
+    const present = ['library', 'downloads'].includes(item.location);
+    let main;
+    if (item.location === 'offline') {
+        main = el('button', {class: 'btn btn-outline-secondary', disabled: '', title: item.note}, icon('fa-plug'), ' Offline');
+    } else if (item.location === 'missing') {
+        main = el('button', {class: 'btn btn-outline-danger', title: item.note, onclick: () => {
+            if (confirm(`${item.note}\n\nDownload all of "${item.name}" again from scratch?`)) action('download_again')();
+        }}, icon('fa-download'), ' Download again');
+    } else {
+        main = el('button', {class: 'btn btn-outline-success', title: missing ? 'Download it now' : 'Get new videos and fill in anything missing', onclick: action('update')},
+            icon(missing ? 'fa-download' : 'fa-rotate'), missing ? ' Download' : ' Update');
+    }
     const menu = [];
     if (item.deleted) menu.push(el('li', {}, el('button', {class: 'dropdown-item', onclick: action('restore')}, icon('fa-trash-arrow-up'), ` Restore ${item.deleted} deleted video${item.deleted > 1 ? 's' : ''}`)));
     if (item.subscribed) menu.push(el('li', {}, el('button', {class: 'dropdown-item', onclick: () => {
@@ -462,10 +478,9 @@ function libraryRow(item) {
         el('td', {}, el('div', {class: 'fw-semibold', text: item.name}), el('div', {}, ...badges)),
         el('td', {class: 'small'}, el('div', {text: item.videos}), el('div', {class: 'muted', text: formatSize(item.size)})),
         el('td', {class: 'text-end'}, el('div', {class: 'btn-group btn-group-sm'},
-            el('button', {class: 'btn btn-outline-success', title: missing ? 'Download it now' : 'Get new videos and fill in anything missing', onclick: action('update')},
-                icon(missing ? 'fa-download' : 'fa-rotate'), missing ? ' Download' : ' Update'),
-            missing ? null : el('button', {class: 'btn btn-outline-warning', title: 'Verify every file, re-download broken ones, rebuild NFOs and artwork', onclick: action('repair')},
-                icon('fa-wrench'), ' Repair'),
+            main,
+            present ? el('button', {class: 'btn btn-outline-warning', title: 'Verify every file, re-download broken ones, rebuild NFOs and artwork', onclick: action('repair')},
+                icon('fa-wrench'), ' Repair') : null,
             menu.length ? el('button', {class: 'btn btn-outline-secondary dropdown-toggle', 'data-bs-toggle': 'dropdown', 'aria-expanded': 'false', title: 'More'}, icon('fa-ellipsis')) : null,
             menu.length ? el('ul', {class: 'dropdown-menu dropdown-menu-end'}, ...menu) : null,
         )),
@@ -473,8 +488,9 @@ function libraryRow(item) {
 }
 
 function renderLibrary(items) {
-    $('welcome').classList.toggle('d-none', items.some((i) => i.location !== 'missing'));
-    $('library-body').replaceChildren(...(items.length ? items.map(libraryRow)
+    $('welcome').classList.toggle('d-none', items.some((i) => i.location !== 'new'));
+    const showLibrary = new Set(items.map((i) => i.library)).size > 1;
+    $('library-body').replaceChildren(...(items.length ? items.map((i) => libraryRow(i, showLibrary))
         : [el('tr', {}, el('td', {colspan: 3, class: 'muted', text: 'Nothing here yet. Add a URL above.'}))]));
 }
 
@@ -484,7 +500,7 @@ async function refreshLibrary() {
 
 // ---------------------------------------------------------------- settings
 
-const SETTING_FIELDS = ['shows_dir', 'movies_dir', 'downloads_dir', 'max_height', 'subtitle_languages',
+const SETTING_FIELDS = ['downloads_dir', 'max_height', 'subtitle_languages',
                         'auto_update_hours', 'gentle', 'host', 'port', 'kodi_url', 'kodi_username', 'kodi_password',
                         'detailed_log'];
 
@@ -494,9 +510,60 @@ function ensureOption(select, value) {
     }
 }
 
-async function loadSettings() {
-    const data = await api('/api/settings');
+function libraryCard(lib, online) {
+    const [badgeClass, badgeText] = online === undefined ? ['bg-secondary', 'not saved yet']
+        : online ? ['bg-success', 'connected'] : ['bg-warning text-dark', 'not connected'];
+    const field = (label, cls, value, placeholder) => el('div', {class: cls.startsWith('lib-name') ? 'col-md-5' : 'col-md-6'},
+        el('label', {class: 'form-label small mb-1', text: label}),
+        el('input', {class: `form-control form-control-sm ${cls}`, value, placeholder, required: '', 'aria-label': label}));
+    const card = el('div', {class: 'library-card border rounded p-3'}, el('div', {class: 'row g-2'},
+        field('Name', 'lib-name', lib.name, 'e.g. MediaDrive'),
+        el('div', {class: 'col-md-7 d-flex align-items-end justify-content-end gap-2'},
+            el('span', {class: `badge ${badgeClass}`, text: badgeText}),
+            online === false ? el('button', {type: 'button', class: 'btn btn-sm btn-outline-light',
+                title: 'For a drive that is connected but has no library folders yet',
+                onclick: async () => {
+                    const data = await post('/api/libraries/create', {name: lib.name});
+                    if (data) { showSettings(data); refreshLibrary(); }
+                }}, icon('fa-folder-plus'), ' Create folders') : null,
+            el('button', {type: 'button', class: 'btn btn-sm btn-outline-danger lib-remove',
+                title: 'Remove this library from the list (its files are not touched)',
+                onclick: () => { card.remove(); updateLibraryEditor(); }}, icon('fa-trash'))),
+        field('Shows folder', 'lib-shows', lib.shows_dir, '/media/you/Drive/YouTube/Shows'),
+        field('Movies folder', 'lib-movies', lib.movies_dir, '/media/you/Drive/YouTube/Movies'),
+    ));
+    return card;
+}
+
+function updateLibraryEditor() {
+    const cards = $('library-editor').querySelectorAll('.library-card');
+    cards.forEach((card) => { card.querySelector('.lib-remove').disabled = cards.length < 2; });
+}
+
+function editedLibraries() {
+    return [...$('library-editor').querySelectorAll('.library-card')].map((card) => ({
+        name: card.querySelector('.lib-name').value.trim(),
+        shows_dir: card.querySelector('.lib-shows').value.trim(),
+        movies_dir: card.querySelector('.lib-movies').value.trim(),
+    }));
+}
+
+$('add-library-btn').addEventListener('click', () => {
+    $('library-editor').append(libraryCard({name: '', shows_dir: '', movies_dir: ''}));
+    updateLibraryEditor();
+});
+
+function showSettings(data) {
     const s = data.settings;
+    $('library-editor').replaceChildren(...s.libraries.map((lib) => libraryCard(lib, data.online[lib.name])));
+    updateLibraryEditor();
+    const choice = $('add-library').value;
+    $('add-library').replaceChildren(...s.libraries.map((lib) => el('option', {value: lib.name,
+        text: data.online[lib.name] ? lib.name : `${lib.name} (not connected)`})));
+    if (s.libraries.some((lib) => lib.name === choice)) $('add-library').value = choice;
+    $('add-library-col').classList.toggle('d-none', s.libraries.length < 2);
+    $('welcome-shows').textContent = s.libraries[0].shows_dir;
+    $('welcome-movies').textContent = s.libraries[0].movies_dir;
     for (const name of SETTING_FIELDS) {
         const input = $(`s-${name}`);
         if (input.type === 'checkbox') input.checked = !!s[name];
@@ -508,15 +575,17 @@ async function loadSettings() {
     }
     $('settings-file').textContent = `Saved in ${data.config_file}`;
     $('log-dir').textContent = data.log_dir;
-    $('welcome-shows').textContent = s.shows_dir;
-    $('welcome-movies').textContent = s.movies_dir;
+}
+
+async function loadSettings() {
+    showSettings(await api('/api/settings'));
 }
 
 $('settings-modal').addEventListener('show.bs.modal', () => loadSettings().catch((err) => toast(err.message, true)));
 
 $('settings-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const body = {};
+    const body = {libraries: editedLibraries()};
     for (const name of SETTING_FIELDS) {
         const input = $(`s-${name}`);
         body[name] = input.type === 'checkbox' ? input.checked : input.value;
@@ -524,7 +593,7 @@ $('settings-form').addEventListener('submit', async (e) => {
     const data = await post('/api/settings', body);
     if (data) {
         bootstrap.Modal.getInstance($('settings-modal')).hide();
-        loadSettings();
+        showSettings(data);
         refreshLibrary();
     }
 });

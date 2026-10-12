@@ -1,15 +1,16 @@
 """End-to-end tests of Update/Repair through the real engine, with yt-dlp replaced by a fake."""
 import errno
+import shutil
 import threading
 import time
 import unittest
 from unittest import mock
 
-from mediasync import media, ytdl
+from mediasync import config, media, ytdl
 from mediasync.engine import Engine
 from mediasync.library import Show, find_videos
 from mediasync.subscriptions import subscriptions
-from mediasync.sync import Task
+from mediasync.sync import Task, tasks_for_all
 
 from .helpers import (
     TempLibraryTestCase, info, make_image, make_srt, make_video, needs_ffmpeg, write_info,
@@ -279,6 +280,39 @@ class SyncTests(TempLibraryTestCase):
         self._wait_for(lambda: self.engine.history)
         self.engine.wait_until_idle()
         self.assertEqual(self.engine.history[0].downloaded, 2)
+
+    def test_an_unplugged_drive_is_skipped_and_nothing_is_downloaded(self):
+        drive = self.add_library("Drive")
+        url = "https://www.youtube.com/playlist?list=PLx"
+        self.assertEqual(self.run_and_wait(Task("update", url=url, library="Drive")).downloaded, 2)
+        self.assertTrue((drive.shows_path / "Resolved Show").is_dir())
+        sub = subscriptions.get("Resolved Show")
+        self.assertEqual((sub.library, sub.archived), ("Drive", True))
+
+        self.unplug(drive)
+        FakeSession.calls = []
+        self.assertEqual(tasks_for_all("update"), [])
+        report = self.run_and_wait(Task("update", url=url))
+        self.assertEqual(report.status, "skipped")
+        self.assertIn("Drive is not connected", report.summary())
+        self.assertEqual(FakeSession.calls, [])
+        self.assertFalse((config.SHOWS_DIR / "Resolved Show").exists())
+
+        self.plug_in(drive)
+        report = self.run_and_wait(Task("update", url=url))
+        self.assertEqual((report.status, report.downloaded), ("ok", 0), report.errors)
+
+    def test_a_missing_folder_is_only_downloaded_again_when_asked(self):
+        url = "https://www.youtube.com/playlist?list=PLx"
+        self.run_and_wait(Task("update", url=url))
+        shutil.rmtree(config.SHOWS_DIR / "Resolved Show")
+
+        report = self.run_and_wait(Task("update", url=url))
+        self.assertEqual((report.status, report.downloaded), ("skipped", 0))
+        self.assertIn("folder is missing", report.summary())
+
+        report = self.run_and_wait(Task("update", url=url, name="Resolved Show", download_again=True))
+        self.assertEqual(report.downloaded, 2)
 
     def test_duplicate_tasks_are_ignored(self):
         FakeSession.gate = threading.Event()

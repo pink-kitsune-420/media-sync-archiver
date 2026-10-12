@@ -8,7 +8,7 @@ from flask import Flask, jsonify, render_template, request
 from . import __version__, config, library, logs
 from .engine import Engine
 from .subscriptions import normalize_limit, normalize_mode, subscriptions
-from .sync import Task
+from .sync import Task, task_for
 from .util import sanitize_filename
 from .ytdl import normalize_url
 
@@ -52,8 +52,11 @@ def create_app(engine: Engine) -> Flask:
         if not name:  # re-adding a subscribed URL reuses its folder
             existing = subscriptions.find_by_url(normalize_url(url)) or subscriptions.find_by_url(url)
             name = existing.name if existing else ""
-        task = Task("update", url=url, name=name or None,
-                    mode=normalize_mode(data.get("mode")), limit=normalize_limit(data.get("limit")))
+        library_name = data.get("library") or ""
+        if library_name and not config.get_library(library_name):
+            return _error(f"There is no library called '{library_name}'.")
+        task = Task("update", url=url, name=name or None, mode=normalize_mode(data.get("mode")),
+                    limit=normalize_limit(data.get("limit")), library=library_name)
         if not engine.enqueue(task):
             return _error("That is already in the queue.", 409)
         return jsonify(message=f"Queued {task.label}")
@@ -65,11 +68,14 @@ def create_app(engine: Engine) -> Flask:
         entry = next((e for e in library.catalog(subscriptions.all()) if e["name"] == name), None)
         if not entry:
             return _error(f"'{name}' was not found.", 404)
-        if kind in ("update", "repair", "restore"):
-            task = Task(kind, url=entry["url"], name=entry["name"], mode=entry["mode"], limit=entry["limit"])
+        if kind in ("update", "repair", "restore", "download_again"):
+            if entry["location"] == "offline":
+                return _error(f"'{name}' is offline: {entry['note']}")
+            task = (task_for("update", entry, download_again=True) if kind == "download_again"
+                    else task_for(kind, entry))
             if not engine.enqueue(task):
-                return _error(f"{kind.capitalize()} of '{name}' is already queued.", 409)
-            return jsonify(message=f"Queued {kind} of '{name}'")
+                return _error(f"{task.kind.capitalize()} of '{name}' is already queued.", 409)
+            return jsonify(message=f"Queued {kind.replace('_', ' ')} of '{name}'")
         if kind == "unsubscribe":
             subscriptions.remove(name)
             return jsonify(message=f"'{name}' will no longer be synced (files were kept).")
@@ -81,7 +87,11 @@ def create_app(engine: Engine) -> Flask:
         if kind not in ("update", "repair"):
             return _error("Unknown action.")
         count = engine.enqueue_all(kind)
-        return jsonify(message=f"Queued {kind} of {count} item{'s' if count != 1 else ''}.")
+        message = f"Queued {kind} of {count} item{'s' if count != 1 else ''}."
+        offline = [lib.name for lib in config.libraries() if not lib.online]
+        if offline:
+            message += f" Skipped what is on {', '.join(offline)} (not connected)."
+        return jsonify(message=message)
 
     @app.post("/api/queue/remove")
     def queue_remove():
@@ -109,14 +119,18 @@ def create_app(engine: Engine) -> Flask:
         config.apply(replace(config.settings, speed_limit=limit))
         return jsonify(speed_limit=engine.speed_limit)
 
+    def settings_payload(settings: config.Settings) -> dict:
+        return dict(settings=asdict(settings), online={lib.name: lib.online for lib in settings.libraries},
+                    config_file=str(config.config_file()), log_dir=str(config.LOG_DIR), version=__version__)
+
     @app.get("/api/settings")
     def get_settings():
-        return jsonify(settings=asdict(config.settings), config_file=str(config.config_file()),
-                       log_dir=str(config.LOG_DIR), version=__version__)
+        return jsonify(settings_payload(config.settings))
 
     @app.post("/api/settings")
     def save_settings():
-        current = asdict(config.settings)
+        old = config.settings
+        current = asdict(old)
         try:
             new = config.from_dict({**current, **payload()})
             config.save(new)
@@ -125,8 +139,25 @@ def create_app(engine: Engine) -> Flask:
         config.apply(new)
         engine.apply_settings()
         logs.set_detailed(new.detailed_log)
-        restart = [k for k in _RESTART_SETTINGS if current[k] != getattr(new, k)]
-        message = "Settings saved." + (" Restart the app for the new address to take effect." if restart else "")
-        return jsonify(message=message, settings=asdict(new))
+        not_created = library.prepare_libraries(old.libraries, new.libraries)
+        message = "Settings saved."
+        if [k for k in _RESTART_SETTINGS if current[k] != getattr(new, k)]:
+            message += " Restart the app for the new address to take effect."
+        if not_created:
+            message += (f" The folders of {', '.join(not_created)} could not be created (is the drive connected?). "
+                        "Once it is, press “Create folders”.")
+        return jsonify(message=message, **settings_payload(new))
+
+    @app.post("/api/libraries/create")
+    def create_library_folders():
+        lib = config.get_library(payload().get("name"))
+        if not lib:
+            return _error("There is no such library.", 404)
+        try:
+            for folder in (lib.shows_path, lib.movies_path):
+                folder.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            return _error(f"Could not create the folders of {lib.name}: {e}")
+        return jsonify(message=f"Created the folders of {lib.name}.", **settings_payload(config.settings))
 
     return app

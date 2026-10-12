@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import shutil
+from dataclasses import replace
 import subprocess
 import tempfile
 import unittest
@@ -29,11 +30,29 @@ class TempLibraryTestCase(unittest.TestCase):
         config.SUBSCRIPTIONS_FILE = config.CONFIG_DIR / "subscriptions.json"
         config.STATE_FILE = config.CONFIG_DIR / "state.json"
         config.LOG_DIR = config.CONFIG_DIR / "logs"
-        config.apply(config.Settings(shows_dir=str(self.root / "Videos" / "Shows"),
-                                     movies_dir=str(self.root / "Videos" / "Movies"),
-                                     downloads_dir=str(self.root / "downloads"), gentle=False))
+        config.apply(config.Settings(
+            libraries=[config.Library("Main", str(self.root / "Videos" / "Shows"), str(self.root / "Videos" / "Movies"))],
+            downloads_dir=str(self.root / "downloads"), gentle=False))
         for d in (config.STAGING_DIR, config.SHOWS_DIR, config.MOVIES_DIR):
             d.mkdir(parents=True)
+
+    def add_library(self, name: str, connected: bool = True) -> config.Library:
+        """A second library, as on an external drive (connected = its folders exist)."""
+        lib = config.Library(name, str(self.root / name / "Shows"), str(self.root / name / "Movies"))
+        if connected:
+            self.plug_in(lib)
+        config.apply(replace(config.settings, libraries=[*config.settings.libraries, lib]))
+        return lib
+
+    def unplug(self, lib: config.Library) -> None:
+        (self.root / lib.name).rename(self.root / f"{lib.name}.unplugged")
+
+    def plug_in(self, lib: config.Library) -> None:
+        unplugged = self.root / f"{lib.name}.unplugged"
+        if unplugged.exists():
+            unplugged.rename(self.root / lib.name)
+        for folder in (lib.shows_path, lib.movies_path):
+            folder.mkdir(parents=True, exist_ok=True)
 
     def tearDown(self):
         for k, v in self._saved.items():

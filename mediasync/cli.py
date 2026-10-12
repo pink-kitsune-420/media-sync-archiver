@@ -8,12 +8,13 @@ import shutil
 import sys
 import threading
 import webbrowser
+from pathlib import Path
 
 from . import __version__, config, library, logs
 from .engine import Engine
 from .library import Show
 from .subscriptions import MODES, subscriptions
-from .sync import Task, tasks_for_all
+from .sync import Task, task_for, tasks_for_all
 from .util import format_bytes
 
 # how the user started us: "mediasync" (installed) or "python3 run.py" (launcher sets MEDIASYNC_PROG)
@@ -43,16 +44,25 @@ def _entries_by_name(names: list[str]) -> list[dict]:
     return [by_name[n] for n in names]
 
 
-def _tasks(kind: str, names: list[str]) -> list[Task]:
+def _tasks(kind: str, names: list[str], **options) -> list[Task]:
     if names:
-        return [Task(kind, url=e["url"], name=e["name"], mode=e["mode"], limit=e["limit"])
-                for e in _entries_by_name(names)]
+        return [task_for(kind, e, **options) for e in _entries_by_name(names)]
     return tasks_for_all(kind)
 
 
 def _ensure_folders() -> None:
-    for directory in (config.STAGING_DIR, config.SHOWS_DIR, config.MOVIES_DIR):
-        directory.mkdir(parents=True, exist_ok=True)
+    """Creates the downloads folder and the folders of libraries inside the home folder. Libraries
+    elsewhere (other drives) are never created here: a missing folder means the drive is unplugged."""
+    config.STAGING_DIR.mkdir(parents=True, exist_ok=True)
+    for lib in config.libraries():
+        for folder in (lib.shows_path, lib.movies_path):
+            if folder.is_relative_to(Path.home()):
+                folder.mkdir(parents=True, exist_ok=True)
+
+
+def _library_lines() -> list[str]:
+    return [f"{lib.name}: {lib.shows_path}  +  {lib.movies_path}" + ("" if lib.online else "  (not connected)")
+            for lib in config.libraries()]
 
 
 def run_tasks(tasks: list[Task]) -> int:
@@ -89,10 +99,10 @@ def cmd_serve(args) -> int:
     print(f"Media Sync Archiver {__version__}")
     print(f"  dashboard:  {url}")
     print(f"  settings:   {config.config_file()}")
-    print(f"  shows:      {config.SHOWS_DIR}")
-    print(f"  movies:     {config.MOVIES_DIR}")
-    print(f"  logs:       {config.LOG_DIR}" + ("  (detailed)" if config.settings.detailed_log else ""))
     _ensure_folders()
+    for i, line in enumerate(_library_lines()):
+        print(f"  {'libraries:' if i == 0 else '':<12}{line}")
+    print(f"  logs:       {config.LOG_DIR}" + ("  (detailed)" if config.settings.detailed_log else ""))
     if not args.no_browser:
         threading.Timer(1.5, webbrowser.open, args=(url,)).start()
     try:
@@ -106,11 +116,17 @@ def cmd_serve(args) -> int:
 
 def cmd_add(args) -> int:
     mode = args.mode or guess_mode(args.url)
-    return run_tasks([Task("update", url=args.url, name=args.name, mode=mode, limit=args.limit)])
+    if args.library and not config.get_library(args.library):
+        sys.exit(f"There is no library called '{args.library}' (see `{PROG} config`)")
+    return run_tasks([Task("update", url=args.url, name=args.name, mode=mode, limit=args.limit,
+                           library=args.library or "")])
 
 
 def cmd_update(args) -> int:
-    tasks = _tasks("update", args.names)
+    if args.download_again and not args.names:
+        sys.exit("Name what to download again, e.g.: "
+                 f'{PROG} update --download-again "Backyard Pottery Club"')
+    tasks = _tasks("update", args.names, download_again=args.download_again)
     for task in tasks:
         task.limit = args.limit or task.limit
         task.refresh_metadata = args.refresh_metadata
@@ -131,14 +147,17 @@ def cmd_list(args) -> int:
         print(f"Nothing yet. Add something with: {PROG} add <YouTube URL>")
         return 0
     labels = {"playlist": "playlist", "years": "by year", "movie": "movie"}
+    statuses = {"library": "", "downloads": "unfinished", "new": "not downloaded",
+                "offline": "offline (drive not connected)", "missing": "folder missing"}
     width = min(max(len(e["name"]) for e in entries), 60)
-    print(f"{'NAME':<{width}}  {'TYPE':<8}  {'VIDEOS':>6}  {'DELETED':>7}  {'SIZE':>9}  STATUS")
+    lib_width = max(len("LIBRARY"), *(len(e["library"]) for e in entries))
+    print(f"{'NAME':<{width}}  {'TYPE':<8}  {'LIBRARY':<{lib_width}}  {'VIDEOS':>6}  {'DELETED':>7}  {'SIZE':>9}  STATUS")
     for e in entries:
-        status = {"library": "", "downloads": "unfinished", "missing": "not downloaded"}[e["location"]]
+        status = statuses[e["location"]]
         if not e["subscribed"]:
             status = (status + ", not subscribed").strip(", ")
-        print(f"{e['name'][:width]:<{width}}  {labels[e['mode']]:<8}  {e['videos']:>6}  {e['deleted']:>7}  "
-              f"{format_bytes(e['size']) if e['size'] else '':>9}  {status}")
+        print(f"{e['name'][:width]:<{width}}  {labels[e['mode']]:<8}  {e['library']:<{lib_width}}  {e['videos']:>6}  "
+              f"{e['deleted']:>7}  {format_bytes(e['size']) if e['size'] else '':>9}  {status}")
     return 0
 
 
@@ -146,8 +165,8 @@ def cmd_clean(args) -> int:
     entries = _entries_by_name(args.names) if args.names else library.catalog(subscriptions.all())
     junk = []
     for entry in entries:
-        show = Show(entry["name"], entry["mode"])
-        junk += library.find_junk(show)
+        show = Show(entry["name"], entry["mode"], entry["library"])
+        junk += library.find_junk(show) if entry["location"] == "library" else []
         if show.staging_dir.is_dir():
             junk.append(show.staging_dir)
     if not junk:
@@ -172,8 +191,8 @@ def cmd_clean(args) -> int:
 def cmd_config(args) -> int:
     print(f"settings:       {config.config_file()}")
     print(f"subscriptions:  {config.SUBSCRIPTIONS_FILE}")
-    print(f"shows folder:   {config.SHOWS_DIR}")
-    print(f"movies folder:  {config.MOVIES_DIR}")
+    for i, line in enumerate(_library_lines()):
+        print(f"{'libraries:' if i == 0 else '':<16}{line}")
     print(f"downloads:      {config.STAGING_DIR}")
     print(f"logs:           {config.LOG_DIR}")
     return 0
@@ -199,6 +218,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--as", dest="mode", choices=MODES,
                    help="movie, playlist (one season in playlist order) or years (one season per year)")
     p.add_argument("--limit", type=int, help="only the newest N videos")
+    p.add_argument("--library", help="which library to put it in (default: the first one in the settings)")
     p.set_defaults(func=cmd_add)
 
     p = sub.add_parser("update", help="get new videos and fill in anything missing (default: all subscribed shows)")
@@ -206,6 +226,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--limit", type=int, help="only look at the newest N videos")
     p.add_argument("--refresh-metadata", action="store_true",
                    help="re-download titles/descriptions of every video and rebuild the NFO files")
+    p.add_argument("--download-again", action="store_true",
+                   help="for items whose folder is missing: download everything again from scratch")
     p.set_defaults(func=cmd_update)
 
     p = sub.add_parser("repair", help="verify every file and fix everything (default: whole library)")

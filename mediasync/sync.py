@@ -43,6 +43,8 @@ class Task:
     mode: str = "playlist"
     limit: int | None = None
     refresh_metadata: bool = False  # re-fetch every video's metadata from YouTube
+    library: str = ""               # where something new goes (default: its subscription's / the default library)
+    download_again: bool = False    # its folder is missing on purpose: download everything again
     id: int = 0
     report: Report | None = field(default=None, repr=False, compare=False)
 
@@ -55,6 +57,10 @@ class Task:
         return self.name or self.url or "?"
 
 
+class Skipped(Exception):
+    """A task that is left alone, e.g. because its library's drive is not connected."""
+
+
 @dataclass
 class Report:
     """Outcome of one task, filled in by both threads and shown in the web UI's activity list."""
@@ -64,7 +70,7 @@ class Report:
     redownloaded: int = 0
     fixed: dict[str, int] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
-    status: str = "ok"              # ok | warning | error | cancelled
+    status: str = "ok"              # ok | warning | error | cancelled | skipped
     note: str = ""
     finished: datetime | None = None
     id: int = field(default_factory=lambda: next(_report_ids))
@@ -100,6 +106,8 @@ class Report:
             parts.append("fixed " + ", ".join(f"{what} ×{n}" for what, n in sorted(self.fixed.items())))
         if self.errors:
             parts.append(f"{len(self.errors)} problem{'s' if len(self.errors) != 1 else ''}")
+        if self.status == "skipped":
+            return self.note
         text = "; ".join(parts) or "Everything up to date"
         return f"{self.note} {text}".strip() if self.note else text
 
@@ -125,13 +133,21 @@ class Context(Protocol):
 
 def tasks_for_all(kind: str) -> list[Task]:
     """'Update all': every subscribed show (movies never get new videos).
-    'Repair all': everything currently in the library, subscribed or not."""
+    'Repair all': everything currently in the library, subscribed or not.
+    Both leave out whatever is offline (drive not connected) or missing."""
     entries = library.catalog(subscriptions.all())
     if kind == "repair":
         chosen = [e for e in entries if e["location"] == "library"]
     else:
-        chosen = [e for e in entries if e["subscribed"] and e["mode"] != "movie"]
-    return [Task(kind, url=e["url"], name=e["name"], mode=e["mode"], limit=e["limit"]) for e in chosen]
+        chosen = [e for e in entries if e["subscribed"] and e["mode"] != "movie"
+                  and e["location"] not in ("offline", "missing")]
+    return [task_for(kind, e) for e in chosen]
+
+
+def task_for(kind: str, entry: dict, **options) -> Task:
+    """A task for one entry of library.catalog()."""
+    return Task(kind, url=entry["url"], name=entry["name"], mode=entry["mode"], limit=entry["limit"],
+                library=entry["library"], **options)
 
 
 # --------------------------------------------------------------------------- inspection
@@ -206,12 +222,17 @@ def run_task(task: Task, ctx: Context, session_factory=None) -> None:
         if not task.name:
             ctx.set_phase("Looking up the name of this channel / playlist / video")
             task.name = _unique_name(session.resolve_name(), task.url)
-        show = Show(task.name, task.mode)
+        sub = subscriptions.get(task.name)
+        where = library.locate(task.name, task.mode, sub, task.library)
+        show = where.show
         report.name = show.name
+        if where.status == "offline" or (where.status == "missing" and not task.download_again):
+            raise Skipped(where.note + (" Use “Download again” to start over." if where.status == "missing" else ""))
         ctx.show = show
         if task.url:
-            subscriptions.upsert(Subscription(show.name, task.url, task.mode, task.limit))
-        log.info("%s %s (%s)", task.kind.capitalize(), show.name, show.mode)
+            subscriptions.upsert(Subscription(show.name, task.url, task.mode, task.limit, library=show.lib.name,
+                                              archived=bool(sub and sub.archived)))
+        log.info("%s %s (%s, in %s)", task.kind.capitalize(), show.name, show.mode, show.lib.name)
 
         # 1. What is there already (under the show lock: the processing thread may be busy with it).
         with ctx.show_lock(show.name):
@@ -384,6 +405,7 @@ def process_download(show: Show, staged_video: Path, info: dict | None, report: 
     writing straight into the library, then the show is re-organized (names, NFOs, artwork)."""
     vid = video_id_from_name(staged_video.name)
     staging = show.staging_dir
+    show.require_online()  # otherwise the finished download waits in staging for the next update
     show.library_dir.mkdir(parents=True, exist_ok=True)
     meta = _save_staged_info(show, vid, info)
     subtitle = _staged_subtitle(staging, vid)
@@ -413,6 +435,7 @@ def process_download(show: Show, staged_video: Path, info: dict | None, report: 
 
 def fix_video(show: Show, vid: str, missing: set[str], report: Report) -> None:
     """Adds whatever an existing library video lacks, in at most one remux pass."""
+    show.require_online()
     staging = show.staging_dir
     meta = _save_staged_info(show, vid, None)
     video = next((v.path for v in library.find_videos(show) if v.id == vid), None)
@@ -465,6 +488,7 @@ def fix_video(show: Show, vid: str, missing: set[str], report: Report) -> None:
 def finalize_show(show: Show, report: Report, refresh_art: bool = False, listing_complete: bool = False) -> None:
     """Last job of a task: stores playlist info/artwork, runs a final full organize pass and records
     that the source was listed completely (which lets later updates take the cheap path)."""
+    show.require_online()
     staging = show.staging_dir
     playlist_raw = read_json(staging / "playlist.info.json")
     if playlist_raw and show.library_dir.is_dir():
@@ -481,6 +505,7 @@ def finalize_show(show: Show, report: Report, refresh_art: bool = False, listing
             state = ShowState(show.metadata_dir)
             state.complete = True
             state.save()
+        subscriptions.set_location(show.name, show.lib.name)  # from now on a missing folder is noticed
     if staging.is_dir():
         for path in staging.glob("playlist.*"):
             path.unlink(missing_ok=True)

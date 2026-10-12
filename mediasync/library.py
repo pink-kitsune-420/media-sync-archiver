@@ -24,6 +24,7 @@ from pathlib import Path
 from . import artwork, config, media, nfo
 from .logs import DETAIL
 from .metadata import MetadataStore, VideoInfo
+from .subscriptions import subscriptions
 from .util import (
     is_fragment, move_file, remove_empty_dirs, sanitize_filename, truncate_utf8, video_id_from_name,
     write_text_if_changed,
@@ -39,19 +40,33 @@ _DATE_EPISODE_RE = re.compile(r"\bS(\d{4})E(\d{4})\d{2}\b", re.IGNORECASE)
 PLAYLIST_ART = "playlist.jpg"
 
 
+class LibraryOffline(Exception):
+    """The library a show lives in is not connected (its drive is unplugged)."""
+
+
 @dataclass(frozen=True)
 class Show:
     """One library entry: a TV show (playlist/years mode) or a movie folder."""
     name: str
     mode: str
+    library: str = ""  # name of the library it is in; "" = the default library
 
     @property
     def is_movie(self) -> bool:
         return self.mode == "movie"
 
     @property
+    def lib(self) -> config.Library:
+        return config.get_library(self.library) or config.default_library()
+
+    @property
     def library_dir(self) -> Path:
-        return (config.MOVIES_DIR if self.is_movie else config.SHOWS_DIR) / self.name
+        return self.lib.path_for(self.is_movie) / self.name
+
+    def require_online(self) -> None:
+        """Called before writing to the library, so nothing is ever created where an unplugged drive was."""
+        if not self.lib.online:
+            raise LibraryOffline(f"{self.lib.name} is not connected")
 
     @property
     def staging_dir(self) -> Path:
@@ -516,43 +531,107 @@ def _is_junk(show: Show, path: Path, video_stems: set[str]) -> bool:
     return not any(name.startswith(stem) and _SIDECAR_RE.fullmatch(name[len(stem):]) for stem in video_stems)
 
 
+# --------------------------------------------------------------------------- where things are
+
+@dataclass
+class Location:
+    show: Show
+    status: str     # "library": its folder exists | "new": never downloaded | "offline" | "missing"
+    note: str = ""  # why an offline/missing item is left alone
+
+
+def locate(name: str, mode: str, sub=None, wanted_library: str = "") -> Location:
+    """Finds a show/movie: in the first connected library that has its folder (so a folder moved to
+    another library is followed), else in the library its subscription names (or wanted_library,
+    for something new). Something that was downloaded before but whose folder cannot be found is
+    "offline" or "missing" and must not be downloaded again from scratch."""
+    is_movie = mode == "movie"
+    for lib in config.libraries():
+        if lib.online and (lib.path_for(is_movie) / name).is_dir():
+            if sub is not None:
+                subscriptions.set_location(name, lib.name)
+            return Location(Show(name, mode, lib.name), "library")
+
+    target = (config.get_library(wanted_library) or config.get_library(sub.library if sub else "")
+              or config.default_library())
+    show = Show(name, mode, target.name)
+    offline = [lib.name for lib in config.libraries() if not lib.online]
+    are = "is" if len(offline) == 1 else "are"
+    if not target.online:
+        return Location(show, "offline", f"{target.name} is not connected.")
+    if sub is not None and not sub.library and offline:  # subscribed before libraries existed: location unknown
+        likely = Show(name, mode, offline[0]) if len(offline) == 1 else show
+        return Location(likely, "offline", f"Not found; it may be on {_join(offline)}, which {are} not connected.")
+    if sub is not None and sub.archived:
+        maybe = f" It may be on {_join(offline)}, which {are} not connected." if offline else ""
+        return Location(show, "missing", f"Its folder is missing from {target.name}.{maybe}")
+    return Location(show, "new")
+
+
+def prepare_libraries(old: list[config.Library], new: list[config.Library]) -> list[str]:
+    """After the library settings changed: keeps subscriptions pointing at renamed libraries and
+    creates the folders of new or moved libraries. Returns the libraries whose folders could not be
+    created (a drive that is not connected). Unchanged libraries are left alone, so an unplugged
+    drive's folders are never created somewhere else."""
+    by_paths = {(lib.shows_dir, lib.movies_dir): lib for lib in old}
+    not_created = []
+    for lib in new:
+        before = by_paths.get((lib.shows_dir, lib.movies_dir))
+        if before:
+            if before.name != lib.name:
+                subscriptions.rename_library(before.name, lib.name)
+            continue
+        try:
+            for folder in (lib.shows_path, lib.movies_path):
+                folder.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            not_created.append(lib.name)
+    return not_created
+
+
+def _join(names: list[str]) -> str:
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " or " + names[-1]
+
+
 # --------------------------------------------------------------------------- catalog for the web UI
 
 def catalog(subs: list) -> list[dict]:
-    """Every subscription plus every folder found in the library or staging area."""
+    """Every subscription plus every folder found in a connected library or the staging area."""
     entries: dict[str, dict] = {}
     for sub in subs:
-        entries[sub.name] = _catalog_entry(Show(sub.name, sub.mode), sub.url, sub.limit, subscribed=True)
-    for base, is_movie in ((config.SHOWS_DIR, False), (config.MOVIES_DIR, True), (config.STAGING_DIR, False)):
+        where = locate(sub.name, sub.mode, sub)
+        entries[sub.name] = _catalog_entry(where, sub.url, sub.limit, subscribed=True)
+    folders = [(lib.path_for(is_movie), is_movie, lib.name)
+               for lib in config.libraries() if lib.online for is_movie in (False, True)]
+    for base, is_movie, lib_name in folders + [(config.STAGING_DIR, False, "")]:
         if not base.is_dir():
             continue
         for folder in sorted(base.iterdir()):
             if folder.is_dir() and not folder.name.startswith(".") and folder.name not in entries:
-                show = Show(folder.name, infer_mode(folder, is_movie))
-                entries[folder.name] = _catalog_entry(show, _guess_url(show), None, subscribed=False)
+                show = Show(folder.name, infer_mode(folder, is_movie), lib_name)
+                status = "library" if show.library_dir.is_dir() else "new"
+                entries[folder.name] = _catalog_entry(Location(show, status), _guess_url(show), None, subscribed=False)
     return sorted(entries.values(), key=lambda e: e["name"].lower())
 
 
-def _catalog_entry(show: Show, url: str | None, limit: int | None, subscribed: bool) -> dict:
-    files = [f for f in iter_files(show.library_dir) if is_video_file(f)] if show.library_dir.is_dir() else []
-    deleted = len(deleted_ids(show)) if show.metadata_dir.is_dir() else 0
+def _catalog_entry(where: Location, url: str | None, limit: int | None, subscribed: bool) -> dict:
+    show = where.show
+    present = where.status == "library"
+    files = [f for f in iter_files(show.library_dir) if is_video_file(f)] if present else []
     partial = show.staging_dir.is_dir() and any(show.staging_dir.iterdir())
-    if show.library_dir.is_dir():
-        location = "library"
-    elif partial:
-        location = "downloads"
-    else:
-        location = "missing"
+    location = "downloads" if where.status == "new" and partial else where.status
     return {
         "name": show.name,
         "mode": show.mode,
+        "library": show.lib.name,
         "url": url,
         "limit": limit,
         "subscribed": subscribed,
         "videos": len(files),
-        "deleted": deleted,
+        "deleted": len(deleted_ids(show)) if present and show.metadata_dir.is_dir() else 0,
         "size": sum(_size(f) for f in files),
         "location": location,
+        "note": where.note,
         "partial": partial,
     }
 
