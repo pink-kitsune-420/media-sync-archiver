@@ -41,9 +41,27 @@ Then install Media Sync Archiver itself:
 
 ```
 pipx install git+https://github.com/pink-kitsune-420/media-sync-archiver.git
+pipx ensurepath
 ```
 
-Run `mediasync`. The dashboard opens in your browser at http://localhost:8765.
+`pipx ensurepath` makes sure your terminal can find programs installed with pipx; close the terminal and
+open a new one afterwards.
+
+## Start it
+
+In a terminal, run:
+
+```
+mediasync
+```
+
+The dashboard opens in your browser at http://localhost:8765. Keep the terminal open while you use it;
+press `Ctrl+C` in it to stop the app.
+
+- **"mediasync: command not found"?** Run `pipx ensurepath`, then open a new terminal and try again.
+- **Running a downloaded copy without installing it?** Open a terminal in the project folder and run
+  `python3 -m mediasync` instead (Windows: `py -m mediasync`). Every `mediasync ...` command below
+  works the same way, e.g. `python3 -m mediasync update`.
 
 > Developed and tested on Linux. Windows and macOS should work but have had less testing; reports welcome.
 
