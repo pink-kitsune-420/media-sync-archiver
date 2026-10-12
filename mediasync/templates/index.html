@@ -527,7 +527,7 @@ function libraryRow(item, showLibrary) {
 
 function renderLibrary(items) {
     $('welcome').classList.toggle('d-none', items.some((i) => i.location !== 'new'));
-    const showLibrary = new Set(items.filter((i) => i.location !== 'leftovers').map((i) => i.library)).size > 1;
+    const showLibrary = libraries.length > 1;  // with several libraries, every row says which one it is in
     $('library-body').replaceChildren(...(items.length ? items.map((i) => libraryRow(i, showLibrary))
         : [el('tr', {}, el('td', {colspan: 3, class: 'muted', text: 'Nothing here yet. Add a URL above.'}))]));
 }
