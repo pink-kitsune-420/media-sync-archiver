@@ -146,8 +146,8 @@ Movies/
   request) and only looks further if that shows something new, stopping at the first video it
   already has. A playlist check is about one request per 100 videos.
 - **Only what's missing.** Metadata and subtitles are only fetched for videos that lack them, and
-  thumbnails come straight from YouTube's image server. Failed subtitle downloads wait a week before
-  Update tries again.
+  thumbnails come straight from YouTube's image server. If YouTube refuses subtitles, Update waits a
+  day before trying again (then 3 days, then a week if it keeps failing); Repair retries right away.
 - **Gentle mode** (on by default) pauses between requests and downloads, the same as yt-dlp's own
   `sleep` preset.
 - **No background polling** unless you switch on automatic checks (at most every 6 hours).
@@ -169,7 +169,7 @@ optional Kodi rescan. Set `MEDIASYNC_HOME` to keep settings and downloads somewh
 - **Open the dashboard from your phone or TV:** set *Who can open this page* to *Any device on my home
   network* and restart. There is no password, so only do this on a network you trust.
 - **A video is missing subtitles:** YouTube sometimes refuses subtitle downloads for a while; Update
-  tries again after a week and Repair tries right away.
+  tries again the next day (waiting longer if it keeps failing) and Repair tries right away.
 
 ## About this project
 

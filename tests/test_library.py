@@ -152,3 +152,43 @@ class OrganizeTests(TempLibraryTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SubtitleRetryTests(TempLibraryTestCase):
+    def test_wait_grows_with_each_failure(self):
+        from datetime import date, timedelta
+
+        from mediasync.metadata import ShowState
+        meta_dir = self.root / "show" / ".metadata"
+        meta_dir.mkdir(parents=True)
+        state = ShowState(meta_dir)
+        days_ago = lambda n: (date.today() - timedelta(days=n)).isoformat()  # noqa: E731
+
+        state.record_subtitles("aaaaaaaaaaa", ok=False)
+        self.assertTrue(state.subtitles_recently_failed("aaaaaaaaaaa"))
+        self.assertEqual([state.subtitle_retry_days("aaaaaaaaaaa")], [1])
+
+        state.subtitle_failures["aaaaaaaaaaa"]["last"] = days_ago(1)
+        self.assertFalse(state.subtitles_recently_failed("aaaaaaaaaaa"), "retried the next day")
+
+        state.record_subtitles("aaaaaaaaaaa", ok=False)
+        state.subtitle_failures["aaaaaaaaaaa"]["last"] = days_ago(2)
+        self.assertTrue(state.subtitles_recently_failed("aaaaaaaaaaa"), "2nd failure waits 3 days")
+        for _ in range(3):
+            state.record_subtitles("aaaaaaaaaaa", ok=False)
+        self.assertEqual(state.subtitle_retry_days("aaaaaaaaaaa"), 7)
+
+        state.record_subtitles("aaaaaaaaaaa", ok=True)
+        self.assertFalse(state.subtitles_recently_failed("aaaaaaaaaaa"))
+
+    def test_older_state_files_still_load(self):
+        from datetime import date
+
+        from mediasync.metadata import ShowState
+        meta_dir = self.root / "show" / ".metadata"
+        meta_dir.mkdir(parents=True)
+        (meta_dir / "state.json").write_text('{"complete": true, "subtitle_failures": {"aaaaaaaaaaa": "%s"}}'
+                                             % date.today().isoformat())
+        state = ShowState(meta_dir)
+        self.assertTrue(state.complete)
+        self.assertTrue(state.subtitles_recently_failed("aaaaaaaaaaa"))

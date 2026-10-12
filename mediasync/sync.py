@@ -414,8 +414,9 @@ def fix_video(show: Show, vid: str, missing: set[str], report: Report) -> None:
         state.record_subtitles(vid, ok=subtitle is not None)
         state.save()
         if not subtitle:
+            days = state.subtitle_retry_days(vid)
             report.error(f"{video.name}: subtitles could not be downloaded (YouTube may be rate-limiting; "
-                         f"they will be tried again in {ShowState.SUBTITLE_RETRY_DAYS} days or by Repair)")
+                         f"Update tries again in {days} day{'s' if days != 1 else ''}, Repair right away)")
     thumb = _staged_file(staging, vid, _IMAGE_EXTS)
     add_chapters = bool(meta and meta.chapters and not p.chapters)
     add_tags = bool(meta and not p.has_title_tag)

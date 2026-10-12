@@ -218,31 +218,43 @@ class ShowState:
 
     complete:          a full listing of the source has finished once, so later updates may stop at
                        the first video already in the archive instead of listing everything again.
-    subtitle_failures: video ID -> date of the last failed subtitle download, so YouTube isn't asked
-                       again on every update (retried after SUBTITLE_RETRY_DAYS, or by Repair).
+    subtitle_failures: video ID -> {"last": date, "count": n} for subtitle downloads YouTube refused.
+                       Update waits before asking again: 1 day after the first failure, 3 after the
+                       second, then a week (Repair always tries right away).
     """
 
     FILE = "state.json"
-    SUBTITLE_RETRY_DAYS = 7
+    SUBTITLE_RETRY_DAYS = (1, 3, 7)
 
     def __init__(self, metadata_dir: Path):
         self.path = metadata_dir / self.FILE
         data = read_json(self.path) or {}
         self.complete = bool(data.get("complete"))
-        self.subtitle_failures: dict[str, str] = dict(data.get("subtitle_failures") or {})
+        self.subtitle_failures: dict[str, dict] = {}
+        for vid, failure in (data.get("subtitle_failures") or {}).items():
+            if isinstance(failure, str):  # older versions stored just the date
+                failure = {"last": failure, "count": 1}
+            self.subtitle_failures[vid] = failure
+
+    def subtitle_retry_days(self, video_id: str) -> int:
+        """How long Update waits after the latest failure of this video's subtitles."""
+        count = (self.subtitle_failures.get(video_id) or {}).get("count", 1)
+        return self.SUBTITLE_RETRY_DAYS[min(max(count, 1), len(self.SUBTITLE_RETRY_DAYS)) - 1]
 
     def subtitles_recently_failed(self, video_id: str) -> bool:
-        failed = self.subtitle_failures.get(video_id)
+        failure = self.subtitle_failures.get(video_id)
         try:
-            return bool(failed) and date.fromisoformat(failed) > date.today() - timedelta(days=self.SUBTITLE_RETRY_DAYS)
-        except ValueError:
+            last = date.fromisoformat(failure["last"]) if failure else None
+        except (KeyError, TypeError, ValueError):
             return False
+        return bool(last) and last > date.today() - timedelta(days=self.subtitle_retry_days(video_id))
 
     def record_subtitles(self, video_id: str, ok: bool) -> None:
         if ok:
             self.subtitle_failures.pop(video_id, None)
         else:
-            self.subtitle_failures[video_id] = date.today().isoformat()
+            count = (self.subtitle_failures.get(video_id) or {}).get("count", 0) + 1
+            self.subtitle_failures[video_id] = {"last": date.today().isoformat(), "count": count}
 
     def save(self) -> None:
         if self.path.parent.is_dir():
