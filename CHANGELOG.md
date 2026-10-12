@@ -3,6 +3,11 @@
 All notable changes to Media Sync Archiver are listed here.
 Version numbers follow [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 
+## [Unreleased]
+
+### Fixed
+- The log file no longer contains terminal color codes from yt-dlp.
+
 ## [1.0.1] - 2026-10-12
 
 Bug fixes and quality-of-life improvements. Settings, subscriptions and libraries from 1.0.0 keep

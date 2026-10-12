@@ -191,6 +191,7 @@ def _base_options(hooks: TaskHooks, staging: Path) -> dict:
         "match_filter": _skip_unavailable,
         "quiet": True,
         "noprogress": True,
+        "color": "no_color",  # plain text in the log file, even when started from a terminal
         "logger": _Logger(hooks),
         "progress_hooks": [hooks.on_progress],
         "ratelimit": hooks.ratelimit(),
