@@ -81,6 +81,13 @@ class SmallHelperTests(TempLibraryTestCase):
         self.assertFalse(is_disk_full(OSError(errno.ENOENT, "No such file or directory")))
         self.assertFalse(is_disk_full("HTTP Error 403: Forbidden"))
 
+    def test_gentle_pauses_are_shown_instead_of_looking_stuck(self):
+        hooks = mock.Mock()
+        logger = ytdl._Logger(hooks)
+        logger.debug("[youtube] Sleeping 0.75 seconds ...")  # between page requests: too short to mention
+        logger.debug("[download] Sleeping 12.93 seconds ...")
+        hooks.waiting.assert_called_once_with(12.93)
+
     def test_private_and_deleted_playlist_entries_are_skipped_without_a_request(self):
         self.assertIsNotNone(ytdl._skip_unavailable({"id": "aaaaaaaaaaa", "title": "[Private video]"}, incomplete=True))
         self.assertIsNotNone(ytdl._skip_unavailable({"id": "aaaaaaaaaaa", "title": "[Deleted video]"}, incomplete=True))

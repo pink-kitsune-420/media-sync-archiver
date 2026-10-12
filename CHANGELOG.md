@@ -13,6 +13,11 @@ Version numbers follow [semantic versioning](https://semver.org): MAJOR.MINOR.PA
 
 ### Changed
 - Shows on a disconnected drive are collapsed into one line per drive at the bottom of the list.
+- The activity line says what is really happening: "Getting the video" for a single video,
+  "Listing the videos" for something new, "Checking for new videos" only for a show that has
+  videos already, and "pausing 13 s first (gentle mode)" during gentle mode's pauses.
+- A video link copied from inside a playlist (`watch?v=…&list=…`) is added as just that video by
+  default; its whole playlist can still be chosen under "Organize as".
 - Tags are chosen by relevance: those shared by the most videos of a show, then those the creator
   listed first. A show gets at most 10, and in a show of three or more videos a tag must be on at
   least two of them, so one episode's topic doesn't become a tag of the whole show. Tags that just

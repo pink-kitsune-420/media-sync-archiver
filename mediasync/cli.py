@@ -30,7 +30,9 @@ EPILOG = """examples:
 
 
 def guess_mode(url: str) -> str:
-    from .ytdl import is_channel_url
+    from .ytdl import is_channel_url, is_video_url
+    if is_video_url(url):
+        return "movie"  # just that video, even when the link came from inside a playlist
     if "list=" in url:
         return "playlist"
     return "years" if is_channel_url(url) else "movie"

@@ -317,13 +317,16 @@ function formatSize(bytes) {
 const MODE_CHOICES = {
     movie: [['movie', 'Movie (single video)']],
     playlist: [['playlist', 'Show: one season, playlist order'], ['years', 'Show: one season per year']],
+    video_in_playlist: [['movie', 'Movie (just this video)'], ['playlist', 'Show: its whole playlist, playlist order'],
+                        ['years', 'Show: its whole playlist, one season per year']],
     channel: [['years', 'Show: one season per year']],
     any: [['movie', 'Movie (single video)'], ['playlist', 'Show: one season, playlist order'], ['years', 'Show: one season per year']],
 };
 
 function urlKind(url) {
     if (!url) return 'any';
-    if (/[?&]list=/.test(url)) return 'playlist';
+    const video = /youtube\.com\/(watch\?|shorts\/|live\/)|youtu\.be\//.test(url);
+    if (/[?&]list=/.test(url)) return video ? 'video_in_playlist' : 'playlist';  // a video opened from a playlist
     if (/youtube\.com\/(@|channel\/|user\/|c\/)/.test(url)) return 'channel';
     return 'movie';
 }

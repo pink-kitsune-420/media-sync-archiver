@@ -357,7 +357,10 @@ def _download_new(task: Task, ctx: Context, session, show: Show, store, state: S
         ctx.set_phase("Checking for new videos")
         session.download(show.staging_dir, known, on_video, incremental=True)
         return False
-    ctx.set_phase("Checking for new videos")
+    if show.is_movie:
+        ctx.set_phase("Getting the video" if not known else "Checking the video")
+    else:
+        ctx.set_phase("Checking for new videos" if known else "Listing the videos")
     session.download(show.staging_dir, known, on_video)
     return True
 

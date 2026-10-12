@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import re
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -39,6 +40,7 @@ _CHANNEL_TABS = ("/videos", "/shorts", "/live", "/streams", "/playlists")
 _USER_AGENT = f"MediaSyncArchiver/{__version__} (+personal offline archive)"
 _FEED_NS = {"atom": "http://www.w3.org/2005/Atom", "yt": "http://www.youtube.com/xml/schemas/2015"}
 _UNAVAILABLE_TITLES = ("[Private video]", "[Deleted video]")  # how playlists list videos nobody can watch
+_SLEEP_RE = re.compile(r"\[download\] Sleeping ([\d.]+) seconds")  # gentle mode's pause before a download
 
 
 class TaskHooks(Protocol):
@@ -50,6 +52,12 @@ class TaskHooks(Protocol):
     def ratelimit(self) -> int | None: ...
     def warning(self, message: str) -> None: ...
     def error(self, message: str) -> None: ...
+    def waiting(self, seconds: float) -> None: ...
+
+
+def is_video_url(url: str | None) -> bool:
+    """A link to one video, also when it was copied from inside a playlist (…watch?v=…&list=…)."""
+    return bool(url) and bool(re.search(r"youtube\.com/(watch\?|shorts/|live/)|youtu\.be/", url))
 
 
 def is_channel_url(url: str | None) -> bool:
@@ -128,6 +136,8 @@ class _Logger:
 
     def debug(self, msg: str) -> None:
         ytdlp_log.debug("yt-dlp: %s", msg)
+        if m := _SLEEP_RE.match(msg):
+            self.hooks.waiting(float(m.group(1)))
 
     info = debug
 

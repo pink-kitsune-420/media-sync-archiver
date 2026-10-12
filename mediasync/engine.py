@@ -88,9 +88,15 @@ class TaskContext:
             elif now - self._last_log > 30 and total:
                 self._last_log = now
                 log.log(DETAIL, "Still downloading %s: %d%% done", info["title"], done / total * 100)
-        elif d["status"] == "finished":
-            self._engine._update_progress({"phase": "Merging", "video": info["title"], "percent": 100.0,
-                                           "speed": "", "eta": ""})
+        elif d["status"] == "finished":  # one stream is done; the next one (or merging) follows
+            part = "audio" if info.get("vcodec") == "none" else "video"
+            self._engine._update_progress({"phase": "Downloading", "video": info["title"], "percent": 100.0,
+                                           "detail": f"{part} stream done", "speed": "", "eta": ""})
+
+    def waiting(self, seconds: float) -> None:
+        """yt-dlp pauses before a download in gentle mode: say so, instead of looking stuck."""
+        self._engine._update_progress({"detail": f"pausing {seconds:.0f} s first (gentle mode)", "speed": "",
+                                       "eta": ""}, merge=True)
 
     def attach_downloader(self, ydl) -> None:
         self._engine._ydl = ydl
@@ -260,9 +266,9 @@ class Engine:
                 "next_auto_update": (lambda n: n.strftime("%a %H:%M") if n else None)(self.next_auto_update()),
             }
 
-    def _update_progress(self, values: dict) -> None:
+    def _update_progress(self, values: dict, merge: bool = False) -> None:
         with self._lock:
-            if values.get("phase") != "Downloading" and "video" not in values:
+            if not merge and values.get("phase") != "Downloading" and "video" not in values:
                 self._progress = {}
             self._progress.update(values)
 

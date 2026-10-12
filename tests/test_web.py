@@ -147,6 +147,8 @@ class CliTests(TempLibraryTestCase):
         self.assertEqual(cli.guess_mode("https://www.youtube.com/playlist?list=PL1"), "playlist")
         self.assertEqual(cli.guess_mode("https://www.youtube.com/@chan"), "years")
         self.assertEqual(cli.guess_mode("https://www.youtube.com/watch?v=abc"), "movie")
+        self.assertEqual(cli.guess_mode("https://www.youtube.com/watch?v=abc&list=PL1&index=3"), "movie")
+        self.assertEqual(cli.guess_mode("https://youtu.be/abc?list=PL1"), "movie")
 
     def test_list(self):
         subscriptions.upsert(Subscription("Wanted", "https://www.youtube.com/@x", "years"))
