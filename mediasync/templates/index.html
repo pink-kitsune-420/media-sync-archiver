@@ -444,15 +444,17 @@ async function refreshStatus() {
 const MODE_LABELS = {movie: 'Movie', playlist: 'Playlist', years: 'By year'};
 
 function libraryRow(item, showLibrary) {
-    const badges = [el('span', {class: 'badge bg-secondary me-1', text: MODE_LABELS[item.mode] || item.mode})];
-    if (showLibrary) badges.push(el('span', {class: 'badge bg-dark border border-info text-info me-1', title: 'Library', text: item.library}));
+    const leftovers = item.location === 'leftovers';  // only files in the downloads folder, no library
+    const badges = leftovers ? [] : [el('span', {class: 'badge bg-secondary me-1', text: MODE_LABELS[item.mode] || item.mode})];
+    if (showLibrary && !leftovers) badges.push(el('span', {class: 'badge bg-dark border border-info text-info me-1', title: 'Library', text: item.library}));
     if (item.location === 'offline') badges.push(el('span', {class: 'badge bg-secondary me-1', title: item.note, text: 'drive not connected'}));
     if (item.location === 'missing') badges.push(el('span', {class: 'badge bg-danger me-1', title: item.note, text: 'folder missing'}));
-    if (!item.subscribed) badges.push(el('span', {class: 'badge bg-dark border me-1', title: 'Not subscribed, so "Update all" skips it', text: 'not subscribed'}));
+    if (leftovers) badges.push(el('span', {class: 'badge bg-dark border border-secondary me-1', title: item.note, text: 'leftover download files'}));
+    if (!item.subscribed && !leftovers) badges.push(el('span', {class: 'badge bg-dark border me-1', title: 'Not subscribed, so "Update all" skips it', text: 'not subscribed'}));
     if (item.location === 'new') badges.push(el('span', {class: 'badge bg-info text-dark me-1', text: 'not downloaded yet'}));
-    if (item.partial) badges.push(el('span', {class: 'badge bg-warning text-dark me-1', title: 'Unfinished downloads resume on the next update', text: 'unfinished download'}));
+    if (item.partial && !leftovers) badges.push(el('span', {class: 'badge bg-warning text-dark me-1', title: 'Unfinished downloads resume on the next update', text: 'unfinished download'}));
     if (item.deleted) badges.push(el('span', {class: 'badge bg-dark border border-warning text-warning me-1', title: 'Videos you deleted are not downloaded again. Use Restore to get them back.', text: `${item.deleted} deleted`}));
-    if (!item.url) badges.push(el('span', {class: 'badge bg-danger me-1', title: 'Source URL unknown: existing files can be checked but no new videos downloaded', text: 'no URL'}));
+    if (!item.url && !leftovers) badges.push(el('span', {class: 'badge bg-danger me-1', title: 'Source URL unknown: existing files can be checked but no new videos downloaded', text: 'no URL'}));
 
     const action = (kind) => async () => { if (await post('/api/action', {action: kind, name: item.name})) refreshLibrary(); };
     const missing = item.location === 'new';
@@ -460,6 +462,10 @@ function libraryRow(item, showLibrary) {
     let main;
     if (item.location === 'offline') {
         main = el('button', {class: 'btn btn-outline-secondary', disabled: '', title: item.note}, icon('fa-plug'), ' Offline');
+    } else if (leftovers) {
+        main = el('button', {class: 'btn btn-outline-secondary', title: item.note, onclick: () => {
+            if (confirm(`${item.note}\n\nDelete the leftover download files of "${item.name}"? Your library is not touched.`)) action('delete_leftovers')();
+        }}, icon('fa-broom'), ' Delete leftovers');
     } else if (item.location === 'missing') {
         main = el('button', {class: 'btn btn-outline-danger', title: item.note, onclick: () => {
             if (confirm(`${item.note}\n\nDownload all of "${item.name}" again from scratch?`)) action('download_again')();
@@ -470,6 +476,8 @@ function libraryRow(item, showLibrary) {
     }
     const menu = [];
     if (item.deleted) menu.push(el('li', {}, el('button', {class: 'dropdown-item', onclick: action('restore')}, icon('fa-trash-arrow-up'), ` Restore ${item.deleted} deleted video${item.deleted > 1 ? 's' : ''}`)));
+    if (!item.subscribed && item.url && present) menu.push(el('li', {}, el('button', {class: 'dropdown-item', onclick: action('subscribe')},
+        icon('fa-bell'), ' Subscribe (include it in Update all)')));
     if (item.subscribed) menu.push(el('li', {}, el('button', {class: 'dropdown-item', onclick: () => {
         if (confirm(`Unsubscribe from "${item.name}"? Downloaded files are kept.`)) action('unsubscribe')();
     }}, icon('fa-bell-slash'), ' Unsubscribe (keeps the files)')));
@@ -489,7 +497,7 @@ function libraryRow(item, showLibrary) {
 
 function renderLibrary(items) {
     $('welcome').classList.toggle('d-none', items.some((i) => i.location !== 'new'));
-    const showLibrary = new Set(items.map((i) => i.library)).size > 1;
+    const showLibrary = new Set(items.filter((i) => i.location !== 'leftovers').map((i) => i.library)).size > 1;
     $('library-body').replaceChildren(...(items.length ? items.map((i) => libraryRow(i, showLibrary))
         : [el('tr', {}, el('td', {colspan: 3, class: 'muted', text: 'Nothing here yet. Add a URL above.'}))]));
 }

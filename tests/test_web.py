@@ -61,6 +61,32 @@ class WebTests(TempLibraryTestCase):
         res = self.client.post("/api/libraries/create", json={"name": "Drive"})  # e.g. a new, empty drive
         self.assertEqual(res.json["online"]["Drive"], True)
 
+    def test_leftover_download_files_can_be_deleted(self):
+        leftovers = config.STAGING_DIR / "Old Show"
+        placeholder(leftovers / "aaaaaaaaaaa.en.srt")
+        res = self.client.post("/api/action", json={"action": "delete_leftovers", "name": "Old Show"})
+        self.assertEqual(res.status_code, 200, res.json)
+        self.assertFalse(leftovers.exists())
+        self.assertNotIn("Old Show", [e["name"] for e in self.client.get("/api/library").json])
+
+        show_dir = config.SHOWS_DIR / "Course"
+        placeholder(show_dir / "Season 01" / "S01E01 - One [aaaaaaaaaaa].mkv")
+        res = self.client.post("/api/action", json={"action": "delete_leftovers", "name": "Course"})
+        self.assertEqual(res.status_code, 400)
+        self.assertTrue(show_dir.exists())
+
+    def test_unsubscribed_shows_can_be_subscribed_again(self):
+        show_dir = config.SHOWS_DIR / "Course"
+        write_info(show_dir / ".metadata", info("aaaaaaaaaaa", "One", index=1))
+        (show_dir / ".metadata" / "playlist.info.json").write_text(
+            '{"_type": "playlist", "id": "PL1", "title": "Course", "webpage_url": "https://www.youtube.com/playlist?list=PL1"}')
+        placeholder(show_dir / "Season 01" / "S01E01 - One [aaaaaaaaaaa].mkv")
+
+        res = self.client.post("/api/action", json={"action": "subscribe", "name": "Course"})
+        self.assertEqual(res.status_code, 200, res.json)
+        self.assertEqual(subscriptions.get("Course"), Subscription(
+            "Course", "https://www.youtube.com/playlist?list=PL1", "playlist", None, library="Main", archived=True))
+
     def test_bad_urls_are_refused(self):
         self.assertEqual(self.client.post("/api/queue", json={"url": "not a url"}).status_code, 400)
 

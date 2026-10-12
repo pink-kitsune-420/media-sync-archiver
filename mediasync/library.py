@@ -601,23 +601,37 @@ def catalog(subs: list) -> list[dict]:
     for sub in subs:
         where = locate(sub.name, sub.mode, sub)
         entries[sub.name] = _catalog_entry(where, sub.url, sub.limit, subscribed=True)
-    folders = [(lib.path_for(is_movie), is_movie, lib.name)
-               for lib in config.libraries() if lib.online for is_movie in (False, True)]
-    for base, is_movie, lib_name in folders + [(config.STAGING_DIR, False, "")]:
-        if not base.is_dir():
-            continue
-        for folder in sorted(base.iterdir()):
-            if folder.is_dir() and not folder.name.startswith(".") and folder.name not in entries:
-                show = Show(folder.name, infer_mode(folder, is_movie), lib_name)
-                status = "library" if show.library_dir.is_dir() else "new"
-                entries[folder.name] = _catalog_entry(Location(show, status), _guess_url(show), None, subscribed=False)
+    for lib in config.libraries():
+        for is_movie in (False, True):
+            for folder in _subfolders(lib.path_for(is_movie)) if lib.online else []:
+                if folder.name not in entries:
+                    show = Show(folder.name, infer_mode(folder, is_movie), lib.name)
+                    entries[folder.name] = _catalog_entry(Location(show, "library"), _guess_url(show), None,
+                                                          subscribed=False)
+    # Anything else in the downloads folder belongs to nothing subscribed or connected.
+    offline = [lib.name for lib in config.libraries() if not lib.online]
+    for folder in _subfolders(config.STAGING_DIR):
+        if folder.name not in entries:
+            note = "Files left over from a download that didn't finish; the show itself isn't in a connected library."
+            if offline:
+                note += f" It may be on {_join(offline)}, which {'is' if len(offline) == 1 else 'are'} not connected."
+            show = Show(folder.name, infer_mode(folder, False))
+            entries[folder.name] = _catalog_entry(Location(show, "leftovers", note), None, None, subscribed=False)
     return sorted(entries.values(), key=lambda e: e["name"].lower())
+
+
+def _subfolders(base: Path) -> list[Path]:
+    if not base.is_dir():
+        return []
+    return [f for f in sorted(base.iterdir()) if f.is_dir() and not f.name.startswith(".")]
 
 
 def _catalog_entry(where: Location, url: str | None, limit: int | None, subscribed: bool) -> dict:
     show = where.show
     present = where.status == "library"
     files = [f for f in iter_files(show.library_dir) if is_video_file(f)] if present else []
+    if where.status == "leftovers":
+        files = [f for f in show.staging_dir.rglob("*") if f.is_file()]
     partial = show.staging_dir.is_dir() and any(show.staging_dir.iterdir())
     location = "downloads" if where.status == "new" and partial else where.status
     return {
@@ -627,7 +641,7 @@ def _catalog_entry(where: Location, url: str | None, limit: int | None, subscrib
         "url": url,
         "limit": limit,
         "subscribed": subscribed,
-        "videos": len(files),
+        "videos": len(files) if present else 0,
         "deleted": len(deleted_ids(show)) if present and show.metadata_dir.is_dir() else 0,
         "size": sum(_size(f) for f in files),
         "location": location,

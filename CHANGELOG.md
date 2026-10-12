@@ -16,12 +16,18 @@ Version numbers follow [semantic versioning](https://semver.org): MAJOR.MINOR.PA
 - A show that was downloaded before but whose folder is gone is marked *folder missing* instead of
   being downloaded again from scratch; **Download again** (`update --download-again NAME`) does
   that on purpose.
+- **Subscribe** (in the "…" menu) for shows in the library that you aren't subscribed to, so
+  unsubscribing can be undone without pasting the URL again.
+- Unsubscribing and other changes to subscriptions are written to the log.
 
 ### Changed
 - Settings from 1.0 become the first library, called "This computer". Subscriptions from 1.0 count
   as downloaded, so a show whose folder is away is never downloaded again by accident.
 
 ### Fixed
+- Files left over from a download that didn't finish, for a show that isn't in a connected library,
+  no longer show up as a show with Update/Repair buttons that do nothing. They're listed as
+  *leftover download files* with a **Delete leftovers** button.
 - The log file no longer contains terminal color codes from yt-dlp.
 
 ## [1.0.1] - 2026-10-12

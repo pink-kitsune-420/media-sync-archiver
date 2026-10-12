@@ -228,6 +228,8 @@ def run_task(task: Task, ctx: Context, session_factory=None) -> None:
         report.name = show.name
         if where.status == "offline" or (where.status == "missing" and not task.download_again):
             raise Skipped(where.note + (" Use “Download again” to start over." if where.status == "missing" else ""))
+        if where.status == "new" and not task.url:
+            raise Skipped("It isn't in a connected library, and its YouTube address is unknown.")
         ctx.show = show
         if task.url:
             subscriptions.upsert(Subscription(show.name, task.url, task.mode, task.limit, library=show.lib.name,

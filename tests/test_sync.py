@@ -314,6 +314,12 @@ class SyncTests(TempLibraryTestCase):
         report = self.run_and_wait(Task("update", url=url, name="Resolved Show", download_again=True))
         self.assertEqual(report.downloaded, 2)
 
+    def test_nothing_happens_for_a_name_without_a_folder_or_address(self):
+        report = self.run_and_wait(Task("update", name="Leftovers Only"))
+        self.assertEqual(report.status, "skipped")
+        self.assertEqual(FakeSession.calls, [])
+        self.assertFalse((config.SHOWS_DIR / "Leftovers Only").exists())
+
     def test_duplicate_tasks_are_ignored(self):
         FakeSession.gate = threading.Event()
         task = dict(url="https://x/playlist?list=PL", name="Course")

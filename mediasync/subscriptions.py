@@ -1,6 +1,7 @@
 """The subscription list (subscriptions.json): every channel, playlist or video the app keeps in sync."""
 from __future__ import annotations
 
+import logging
 import threading
 from dataclasses import asdict, dataclass, replace
 
@@ -8,6 +9,8 @@ from . import config
 from .util import read_json, write_json
 
 MODES = ("playlist", "years", "movie")
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -93,6 +96,8 @@ class SubscriptionStore:
         with self._lock:
             sub = self.get(name)
             if sub and (sub.library, sub.archived) != (library, True):
+                if sub.library and sub.library != library:
+                    log.info("%s: found in %s (it was in %s)", name, library, sub.library)
                 self.upsert(replace(sub, library=library, archived=True))
 
     def rename_library(self, old: str, new: str) -> None:

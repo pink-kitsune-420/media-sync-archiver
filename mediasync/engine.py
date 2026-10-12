@@ -213,6 +213,12 @@ class Engine:
         with self._lock:
             return self._show_locks[name]
 
+    def busy(self, name: str) -> bool:
+        """Whether a show is queued, downloading or being processed."""
+        with self._lock:
+            return (any(t.label == name for t in [self._current, *self._pending] if t)
+                    or bool(self._in_flight_ids(name)))
+
     def wait_until_idle(self, timeout: float | None = None) -> bool:
         """Blocks until nothing is running or processing and the queue is empty (or paused).
         Returns False on timeout."""

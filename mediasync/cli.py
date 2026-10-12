@@ -148,7 +148,8 @@ def cmd_list(args) -> int:
         return 0
     labels = {"playlist": "playlist", "years": "by year", "movie": "movie"}
     statuses = {"library": "", "downloads": "unfinished", "new": "not downloaded",
-                "offline": "offline (drive not connected)", "missing": "folder missing"}
+                "offline": "offline (drive not connected)", "missing": "folder missing",
+                "leftovers": "only leftover download files (see clean)"}
     width = min(max(len(e["name"]) for e in entries), 60)
     lib_width = max(len("LIBRARY"), *(len(e["library"]) for e in entries))
     print(f"{'NAME':<{width}}  {'TYPE':<8}  {'LIBRARY':<{lib_width}}  {'VIDEOS':>6}  {'DELETED':>7}  {'SIZE':>9}  STATUS")

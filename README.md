@@ -101,6 +101,8 @@ and artwork too.
 | **Update all** | Update for every subscribed show, one at a time (movies are skipped: they never get new videos). | Same as Update, for each show |
 | **Repair all** | Repair for everything in the library, including items you've unsubscribed from. | Same as Repair, for each item |
 | **Download again** | Only offered when a show's folder has gone missing: downloads all of it again from scratch. | Yes, everything |
+| **Subscribe** / **Unsubscribe** | In the "…" menu: include a show in Update all, or stop updating it (its files are kept). | No |
+| **Delete leftovers** | Only offered for files left over from a download that didn't finish, when the show itself isn't in a connected library. | No |
 
 Videos you delete yourself **stay deleted**: Update never downloads them again, and the other episodes
 keep their numbers. The library list shows how many were deleted, and Restore brings them back in

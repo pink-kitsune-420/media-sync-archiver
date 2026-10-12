@@ -101,6 +101,19 @@ class CatalogTests(TempLibraryTestCase):
         self.assertEqual(entries["Gone"]["location"], "offline")
 
 
+    def test_leftover_download_files_are_their_own_kind_of_entry(self):
+        drive = self.add_library("Drive", connected=False)
+        placeholder(config.STAGING_DIR / "Old Show" / "aaaaaaaaaaa.info.json", size=2048)
+        entry = next(e for e in library.catalog(subscriptions.all()) if e["name"] == "Old Show")
+        self.assertEqual((entry["location"], entry["videos"], entry["size"]), ("leftovers", 0, 2048))
+        self.assertIn("may be on Drive", entry["note"])
+
+        self.plug_in(drive)
+        make_show(drive, "Old Show")  # its drive is back: a normal entry with an unfinished download
+        entry = next(e for e in library.catalog(subscriptions.all()) if e["name"] == "Old Show")
+        self.assertEqual((entry["location"], entry["library"], entry["partial"]), ("library", "Drive", True))
+
+
 class PrepareLibrariesTests(TempLibraryTestCase):
     def test_new_libraries_get_folders_and_renames_keep_subscriptions(self):
         main = config.default_library()

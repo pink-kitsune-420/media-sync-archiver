@@ -1,16 +1,21 @@
 """Flask web dashboard and its JSON API."""
 from __future__ import annotations
 
+import logging
+import shutil
 from dataclasses import asdict, replace
 
 from flask import Flask, jsonify, render_template, request
 
 from . import __version__, config, library, logs
 from .engine import Engine
-from .subscriptions import normalize_limit, normalize_mode, subscriptions
+from .library import Show
+from .subscriptions import Subscription, normalize_limit, normalize_mode, subscriptions
 from .sync import Task, task_for
 from .util import sanitize_filename
 from .ytdl import normalize_url
+
+log = logging.getLogger(__name__)
 
 # settings that only take effect after the app is restarted
 _RESTART_SETTINGS = ("host", "port")
@@ -78,7 +83,23 @@ def create_app(engine: Engine) -> Flask:
             return jsonify(message=f"Queued {kind.replace('_', ' ')} of '{name}'")
         if kind == "unsubscribe":
             subscriptions.remove(name)
+            log.info("Unsubscribed %s (its files were kept)", name)
             return jsonify(message=f"'{name}' will no longer be synced (files were kept).")
+        if kind == "subscribe":
+            if entry["subscribed"] or not entry["url"]:
+                return _error(f"'{name}' can't be subscribed to: its YouTube address is unknown.")
+            subscriptions.upsert(Subscription(name, entry["url"], entry["mode"], entry["limit"],
+                                              library=entry["library"], archived=entry["location"] == "library"))
+            log.info("Subscribed to %s", name)
+            return jsonify(message=f"Subscribed: Update all now includes '{name}'.")
+        if kind == "delete_leftovers":
+            if entry["location"] != "leftovers":
+                return _error(f"'{name}' has no leftover download files.")
+            if engine.busy(name):
+                return _error(f"'{name}' is in the queue; try again when it's done.", 409)
+            shutil.rmtree(Show(name, entry["mode"]).staging_dir, ignore_errors=True)
+            log.info("Deleted the leftover download files of %s", name)
+            return jsonify(message=f"Deleted the leftover download files of '{name}'.")
         return _error("Unknown action.")
 
     @app.post("/api/sync-all")
