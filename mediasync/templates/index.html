@@ -18,6 +18,8 @@
         .steps li + li { margin-top: .4rem; }
         code { color: #f0a6ca; }
         .group-row td { background: rgba(255, 255, 255, .035); }
+        tr.drop-target td { background: rgba(13, 110, 253, .25) !important; }
+        tr[draggable="true"] { cursor: grab; }
         #library-search { width: 170px; }
     </style>
 </head>
@@ -42,8 +44,9 @@
                 <input type="url" class="form-control" id="add-url" placeholder="https://www.youtube.com/…" required>
             </div>
             <div class="col-lg-2">
-                <label for="add-name" class="form-label">Folder name <span class="muted small">(optional)</span></label>
-                <input type="text" class="form-control" id="add-name" placeholder="Taken from YouTube if blank">
+                <label for="add-name" class="form-label">Name <span class="muted small">(optional)</span></label>
+                <input type="text" class="form-control" id="add-name" placeholder="Its YouTube title"
+                       title="What it is called in your library (and Kodi). Leave it empty to use its title on YouTube.">
             </div>
             <div class="col-lg-3">
                 <label for="add-mode" class="form-label">Organize as</label>
@@ -116,6 +119,7 @@
                     <h2 class="h5 mb-0"><i class="fa-solid fa-folder-open text-primary"></i> Library</h2>
                     <div class="d-flex flex-wrap gap-2 align-items-center">
                         <input type="search" id="library-search" class="form-control form-control-sm" placeholder="Search…" aria-label="Search the library">
+                        <button id="new-folder-btn" class="btn btn-sm btn-outline-light" title="New folder, to sort the list (nothing moves on disk)"><i class="fa-solid fa-folder-plus"></i><span class="d-none d-md-inline"> New folder</span></button>
                         <div class="btn-group btn-group-sm">
                             <button id="sync-all-btn" class="btn btn-outline-success" title="Check every subscribed show for new videos and missing items"><i class="fa-solid fa-rotate"></i> Update all</button>
                             <button id="repair-all-btn" class="btn btn-outline-warning" title="Verify and repair everything in the library"><i class="fa-solid fa-wrench"></i> Repair all</button>
@@ -470,7 +474,24 @@ async function refreshStatus() {
 const MODE_LABELS = {movie: 'Movie', playlist: 'Playlist', years: 'By year'};
 
 let lastLibraryItems = null;
+let folderNames = [];  // every folder, including empty ones (from /api/folders)
 let allFolders = [];
+
+// Dragging a row onto a folder (or onto "Not in a folder") puts it there. On touch screens the
+// row's … menu does the same.
+function dropTarget(folder) {
+    return {
+        ondragover: (e) => { if (e.dataTransfer.types.includes('text/plain')) { e.preventDefault(); e.currentTarget.classList.add('drop-target'); } },
+        ondragleave: (e) => e.currentTarget.classList.remove('drop-target'),
+        ondrop: (e) => {
+            e.preventDefault();
+            e.currentTarget.classList.remove('drop-target');
+            const name = e.dataTransfer.getData('text/plain');
+            const item = (lastLibraryItems || []).find((i) => i.name === name);
+            if (item && item.folder !== folder) putInFolder(item, folder);
+        },
+    };
+}
 
 // Which sections of the library list are open (remembered in this browser only).
 const SECTIONS_KEY = 'mediasync.sections';
@@ -518,7 +539,8 @@ function groupRow(group, open, count) {
                 && await post('/api/folders/rename', {old: group.title, new: ''})) refreshLibrary();
         }}, icon('fa-folder-minus'), ' Remove folder')),
     ];
-    return el('tr', {class: 'group-row'}, el('td', {colspan: 3},
+    const droppable = group.kind === 'folder' || group.kind === 'loose';
+    return el('tr', {class: 'group-row', ...(droppable ? dropTarget(group.kind === 'folder' ? group.title : '') : {})}, el('td', {colspan: 3},
         el('div', {class: 'd-flex justify-content-between align-items-center'},
             el('button', {type: 'button', class: 'btn btn-link text-reset text-decoration-none p-0 fw-semibold text-start',
                           'aria-expanded': String(open), onclick: () => toggleSection(group.key, group.kind)},
@@ -529,7 +551,7 @@ function groupRow(group, open, count) {
                 el('ul', {class: 'dropdown-menu dropdown-menu-end'}, ...menu)) : null)));
 }
 
-function libraryRow(item, showLibrary, nested) {
+function libraryRow(item, showLibrary, nested, folder) {
     const leftovers = item.location === 'leftovers';  // only files in the downloads folder, no library
     const badges = leftovers ? [] : [el('span', {class: 'badge bg-secondary me-1', text: MODE_LABELS[item.mode] || item.mode})];
     if (showLibrary && !leftovers) badges.push(el('span', {class: 'badge bg-dark border border-info text-info me-1', title: 'Library', text: item.library}));
@@ -584,7 +606,12 @@ function libraryRow(item, showLibrary, nested) {
         menu.push(...folderMenu(item));
     }
 
-    return el('tr', {},
+    const drag = folder === undefined || leftovers ? {} : {
+        draggable: 'true',
+        ondragstart: (e) => { e.dataTransfer.setData('text/plain', item.name); e.dataTransfer.effectAllowed = 'move'; },
+        ...dropTarget(folder),
+    };
+    return el('tr', drag,
         el('td', {class: nested ? 'ps-4' : ''}, el('div', {class: 'fw-semibold', text: item.name}), el('div', {}, ...badges)),
         el('td', {class: 'small'}, el('div', {text: item.videos}), el('div', {class: 'muted', text: formatSize(item.size)})),
         el('td', {class: 'text-end'}, el('div', {class: 'btn-group btn-group-sm'},
@@ -604,7 +631,7 @@ function renderLibrary(items) {
     const query = $('library-search').value.trim().toLowerCase();
     const matches = (i) => !query || i.name.toLowerCase().includes(query) || i.folder.toLowerCase().includes(query);
     const offline = (i) => i.location === 'offline';
-    allFolders = [...new Set(items.map((i) => i.folder).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    allFolders = [...new Set([...folderNames, ...items.map((i) => i.folder).filter(Boolean)])].sort((a, b) => a.localeCompare(b));
     // Your folders, then everything else, then one collapsed line per disconnected drive.
     const groups = [
         ...allFolders.map((f) => ({key: `folder:${f}`, kind: 'folder', title: f, items: items.filter((i) => !offline(i) && i.folder === f)})),
@@ -615,11 +642,17 @@ function renderLibrary(items) {
     const rows = [];
     for (const group of groups) {
         const shown = group.items.filter(matches);
-        if (!shown.length) continue;
+        const emptyFolder = group.kind === 'folder' && !group.items.length;
+        if (!shown.length && (query || !emptyFolder)) continue;
         const headed = group.kind !== 'loose' || allFolders.length > 0;
         const open = !headed || query !== '' || sectionOpen(group.key, group.kind);
+        const folder = group.kind === 'folder' ? group.title : group.kind === 'loose' ? '' : undefined;
         if (headed) rows.push(groupRow(group, open, shown.length));
-        if (open) rows.push(...shown.map((i) => libraryRow(i, showLibrary, headed)));
+        if (open && emptyFolder) {
+            rows.push(el('tr', dropTarget(group.title), el('td', {colspan: 3, class: 'ps-4 muted small',
+                text: 'Empty: drag shows here, or use a show’s … menu.'})));
+        }
+        if (open) rows.push(...shown.map((i) => libraryRow(i, showLibrary, headed, folder)));
     }
     if (!rows.length) rows.push(el('tr', {}, el('td', {colspan: 3, class: 'muted',
         text: items.length ? `Nothing matches “${query}”.` : 'Nothing here yet. Add a URL above.'})));
@@ -629,8 +662,17 @@ function renderLibrary(items) {
 $('library-search').addEventListener('input', () => { if (lastLibraryItems) renderLibrary(lastLibraryItems); });
 
 async function refreshLibrary() {
-    try { renderLibrary(await api('/api/library')); } catch (err) { toast(err.message, true); }
+    try {
+        const [items, data] = await Promise.all([api('/api/library'), api('/api/folders')]);
+        folderNames = data.folders;
+        renderLibrary(items);
+    } catch (err) { toast(err.message, true); }
 }
+
+$('new-folder-btn').addEventListener('click', async () => {
+    const name = prompt('Name of the new folder (it only sorts this list; nothing moves on disk):');
+    if (name && name.trim() && await post('/api/folders/create', {name: name.trim()})) refreshLibrary();
+});
 
 // ---------------------------------------------------------------- settings
 

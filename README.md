@@ -103,7 +103,7 @@ and artwork too.
 | **Download again** | Only offered when a show's folder has gone missing: downloads all of it again from scratch. | Yes, everything |
 | **Subscribe** / **Unsubscribe** | In the "…" menu: include a show in Update all, or stop updating it (its files are kept). If its YouTube address isn't known, Subscribe asks for it. | No |
 | **Move to …** | In the "…" menu: moves a show or movie to another library, e.g. onto an external drive. | No |
-| **Folders** | In the "…" menu: put shows in folders of your own to keep a long list tidy (the files don't move). Folders can be collapsed, renamed and removed; the search box finds things inside them too. | No |
+| **New folder** | Folders of your own to keep a long list tidy (only the list is sorted; the files don't move). Drag shows onto a folder, or use a show's "…" menu. Folders can be collapsed, renamed and removed; the search box finds things inside them too. | No |
 | **Delete leftovers** | Only offered for files left over from a download that didn't finish, when the show itself isn't in a connected library. | No |
 
 Videos you delete yourself **stay deleted**: Update never downloads them again, and the other episodes

@@ -5,6 +5,15 @@ Version numbers follow [semantic versioning](https://semver.org): MAJOR.MINOR.PA
 
 ## [Unreleased]
 
+### Added
+- A **New folder** button in the library list. Folders stay until you remove them, even when empty.
+- Drag shows and movies onto a folder (or onto "Not in a folder") to sort them; the "…" menu still
+  does the same on touch screens.
+
+### Changed
+- The add form's "Folder name" is now called "Name": it is what the show or movie is called in your
+  library (and its folder's name on disk), not one of the list's folders.
+
 ### Fixed
 - **Create folders** is only offered for a library whose drive is plugged in but has no library
   folders yet ("folders missing"), not for a drive that isn't connected, where it could only fail.

@@ -122,6 +122,20 @@ def create_app(engine: Engine) -> Flask:
             return jsonify(message=f"Deleted the leftover download files of '{name}'.")
         return _error("Unknown action.")
 
+    @app.get("/api/folders")
+    def folder_list():
+        return jsonify(folders=folders.names())
+
+    @app.post("/api/folders/create")
+    def create_folder():
+        name = clean_name(payload().get("name"))
+        if not name:
+            return _error("Please give the folder a name.")
+        if name in folders.names():
+            return _error(f"There already is a folder called {name}.", 409)
+        folders.create(name)
+        return jsonify(message=f"Made the folder {name}: drag shows onto it, or use a show's … menu.")
+
     @app.post("/api/folders/rename")
     def rename_folder():
         data = payload()

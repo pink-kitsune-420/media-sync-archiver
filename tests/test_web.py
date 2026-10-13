@@ -133,6 +133,16 @@ class WebTests(TempLibraryTestCase):
         res = self.client.post("/api/folders/rename", json={"old": "Retro", "new": ""})
         self.assertIn("1 item stay", res.json["message"])
         self.assertEqual(folder_of(), {"Course": "", "Other": ""})
+        self.assertEqual(self.client.get("/api/folders").json["folders"], [])
+
+    def test_empty_folders_can_be_made_and_stay(self):
+        self.assertEqual(self.client.post("/api/folders/create", json={"name": " Art "}).status_code, 200)
+        self.assertEqual(self.client.post("/api/folders/create", json={"name": "Art"}).status_code, 409)
+        self.assertEqual(self.client.post("/api/folders/create", json={"name": "  "}).status_code, 400)
+        placeholder(config.SHOWS_DIR / "Course" / "Season 01" / "S01E01 - One [aaaaaaaaaaa].mkv")
+        self.client.post("/api/action", json={"action": "set_folder", "name": "Course", "folder": "Art"})
+        self.client.post("/api/action", json={"action": "set_folder", "name": "Course", "folder": ""})
+        self.assertEqual(self.client.get("/api/folders").json["folders"], ["Art"])  # still there, empty
 
     def test_bad_urls_are_refused(self):
         self.assertEqual(self.client.post("/api/queue", json={"url": "not a url"}).status_code, 400)
