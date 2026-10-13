@@ -91,4 +91,4 @@ class SmallHelperTests(TempLibraryTestCase):
     def test_private_and_deleted_playlist_entries_are_skipped_without_a_request(self):
         self.assertIsNotNone(ytdl._skip_unavailable({"id": "aaaaaaaaaaa", "title": "[Private video]"}, incomplete=True))
         self.assertIsNotNone(ytdl._skip_unavailable({"id": "aaaaaaaaaaa", "title": "[Deleted video]"}, incomplete=True))
-        self.assertIsNone(ytdl._skip_unavailable({"id": "aaaaaaaaaaa", "title": "Pixel Art 101"}, incomplete=True))
+        self.assertIsNone(ytdl._skip_unavailable({"id": "aaaaaaaaaaa", "title": "Backyard Pottery Club"}, incomplete=True))

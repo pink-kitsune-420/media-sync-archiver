@@ -79,13 +79,34 @@ def tvshow_nfo(title: str, playlist: PlaylistInfo | None, videos: list[VideoInfo
     return _render(root)
 
 
-_HASHTAG_RE = re.compile(r"(?:^|\s)#(\w+)")  # "#pixelart", not the "#History" of a link
+# "#offgrid" or "(#offgrid)", but not the "#Section" at the end of a link
+_HASHTAG_RE = re.compile(r"(?<![^\s(\[])#(\w+)")
+_GENERIC_TAGS = {"video", "videos", "youtube", "shorts"}
 
 
 def _hashtags(video: VideoInfo) -> list[str]:
     """Hashtags in the title and description: many creators use these instead of YouTube's tags."""
     found = _HASHTAG_RE.findall(f"{video.title}\n{video.description}")[:10]
-    return [re.sub(r"(?<=[a-z])(?=[A-Z])", " ", tag.replace("_", " ")) for tag in found]  # PixelArt -> Pixel Art
+    return [re.sub(r"(?<=[a-z])(?=[A-Z])", " ", tag.replace("_", " ")) for tag in found]  # CabinLife -> Cabin Life
+
+
+def _squash(text: str) -> str:
+    """"Clay Corner", "#ClayCorner" and "clay_corner" all become "claycorner"."""
+    return re.sub(r"[\W_]+", "", text.lower())
+
+
+def _singular(word: str) -> str:
+    """So that "glaze" and "glazes" count as one tag (but "class", "news", "campus" stay as they are)."""
+    plural = len(word) > 3 and word.endswith("s") and not word.endswith(("ss", "us", "is", "ews"))
+    return word[:-1] if plural else word
+
+
+def _display(tag: str) -> str:
+    """How a tag is shown: "log cabin" -> "Log Cabin", "WOODWORKING" -> "Woodworking"; "DIY", "iPhone" stay."""
+    words = tag.split(" ")
+    if tag.islower() or (tag.isupper() and len(_squash(tag)) > 4):
+        return " ".join(w[:1].upper() + w[1:].lower() for w in words)
+    return tag
 
 
 def pick_tags(videos: list[VideoInfo], show_name: str, channel: str, limit: int = 10) -> list[str]:
@@ -94,17 +115,16 @@ def pick_tags(videos: list[VideoInfo], show_name: str, channel: str, limit: int 
     three or more videos a tag must be on at least two of them (and on a tenth), so one episode's
     topic doesn't become a tag of the whole show. Tags that are just the show's or the channel's
     name are left out."""
-    ignore = {show_name.lower().strip(), channel.lower().strip(), "video", "videos", "youtube", "shorts"}
-    ignore |= set(re.findall(r"\w+", channel.lower()))  # e.g. "brandon" for Brandon James
-    ignore.add("".join(w[0] for w in show_name.split() if w).lower())  # initials, e.g. "pa101"
+    ignore = {_squash(show_name), _squash(channel), *_GENERIC_TAGS}
     counts: dict[str, int] = {}
     positions: dict[str, list[int]] = {}
     spelling: dict[str, str] = {}
     for video in videos:
         seen = set()
-        for position, tag in enumerate(t.strip() for t in [*video.tags, *_hashtags(video)]):
-            key = tag.lower().rstrip("s") if len(tag) > 3 else tag.lower()  # "sprite" = "sprites"
-            if not tag or key in seen or len(tag) <= 2 or len(tag.split()) > 3 or tag.lower() in ignore:
+        for position, raw in enumerate([*video.tags, *_hashtags(video)]):
+            tag = " ".join(raw.strip().lstrip("#").split())
+            key = " ".join(_singular(w) for w in tag.lower().split())
+            if len(tag) <= 2 or len(tag.split()) > 3 or key in seen or _squash(tag) in ignore:
                 continue
             seen.add(key)
             counts[key] = counts.get(key, 0) + 1
@@ -113,5 +133,4 @@ def pick_tags(videos: list[VideoInfo], show_name: str, channel: str, limit: int 
     needed = 1 if len(videos) < 3 else max(2, math.ceil(len(videos) / 10))
     ranked = sorted((k for k in counts if counts[k] >= needed),
                     key=lambda k: (-counts[k], sum(positions[k]) / len(positions[k])))
-    return [spelling[k].title() if spelling[k].islower() or spelling[k].isupper() else spelling[k]
-            for k in ranked[:limit]]
+    return [_display(spelling[k]) for k in ranked[:limit]]
