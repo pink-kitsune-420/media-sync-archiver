@@ -3,7 +3,10 @@
 All notable changes to Media Sync Archiver are listed here.
 Version numbers follow [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 
-## [Unreleased]
+## [1.1.1] - 2026-10-12
+
+A tidier library list (folders, search, disconnected drives collapsed) and better tags.
+Settings, subscriptions and libraries from 1.1.0 keep working as they are.
 
 ### Added
 - **Folders** in the library list: put shows and movies in folders of your own from the "…" menu
@@ -27,6 +30,8 @@ Version numbers follow [semantic versioning](https://semver.org): MAJOR.MINOR.PA
 
 ### Fixed
 - Movies get tags too (at most 8).
+- Tags: plurals are matched carefully ("glazes" = "glaze", but "class" and "news" stay apart),
+  "don't" no longer becomes "Don'T", and acronyms such as DIY keep their capitals.
 
 ## [1.1.0] - 2026-10-12
 
