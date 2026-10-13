@@ -9,6 +9,8 @@ Version numbers follow [semantic versioning](https://semver.org): MAJOR.MINOR.PA
 - A **New folder** button in the library list. Folders stay until you remove them, even when empty.
 - Drag shows and movies onto a folder (or onto "Not in a folder") to sort them; the "…" menu still
   does the same on touch screens.
+  Shows on a disconnected drive can't be sorted until the drive is back (they're listed under the
+  drive meanwhile, and keep their folder).
 
 ### Changed
 - The add form's "Folder name" is now called "Name": it is what the show or movie is called in your

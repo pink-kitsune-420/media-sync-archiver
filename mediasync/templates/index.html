@@ -601,7 +601,7 @@ function libraryRow(item, showLibrary, nested, folder) {
     if (item.subscribed) menu.push(el('li', {}, el('button', {class: 'dropdown-item', onclick: () => {
         if (confirm(`Unsubscribe from "${item.name}"? Downloaded files are kept.`)) action('unsubscribe')();
     }}, icon('fa-bell-slash'), ' Unsubscribe (keeps the files)')));
-    if (!leftovers) {
+    if (!leftovers && item.location !== 'offline') {  // on a disconnected drive it is listed under the drive, not a folder
         if (menu.length) menu.push(el('li', {}, el('hr', {class: 'dropdown-divider'})));
         menu.push(...folderMenu(item));
     }
