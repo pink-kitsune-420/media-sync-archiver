@@ -565,7 +565,7 @@ def locate(name: str, mode: str, sub=None, wanted_library: str = "") -> Location
     offline = [lib.name for lib in config.libraries() if not lib.online]
     are = "is" if len(offline) == 1 else "are"
     if not target.online:
-        return Location(show, "offline", f"{target.name} is not connected.")
+        return Location(show, "offline", _offline_note(target))
     if sub is not None and not sub.library and offline:  # subscribed before libraries existed: location unknown
         likely = Show(name, mode, offline[0]) if len(offline) == 1 else show
         return Location(likely, "offline", f"Not found; it may be on {_join(offline)}, which {are} not connected.")
@@ -650,6 +650,12 @@ def prepare_libraries(old: list[config.Library], new: list[config.Library]) -> l
         except OSError:
             not_created.append(lib.name)
     return not_created
+
+
+def _offline_note(lib: config.Library) -> str:
+    if lib.state == "no folders":
+        return f"The folders of {lib.name} don't exist yet: create them under Settings › Libraries."
+    return f"{lib.name} is not connected."
 
 
 def _join(names: list[str]) -> str:

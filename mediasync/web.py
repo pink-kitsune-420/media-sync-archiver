@@ -38,7 +38,7 @@ def create_app(engine: Engine) -> Flask:
 
     @app.get("/api/status")
     def status():
-        libraries = [{"name": lib.name, "online": lib.online} for lib in config.libraries()]
+        libraries = [{"name": lib.name, "online": lib.online, "state": lib.state} for lib in config.libraries()]
         return jsonify({**engine.status(), "libraries": libraries})
 
     @app.get("/api/library")
@@ -172,6 +172,7 @@ def create_app(engine: Engine) -> Flask:
 
     def settings_payload(settings: config.Settings) -> dict:
         return dict(settings=asdict(settings), online={lib.name: lib.online for lib in settings.libraries},
+                    states={lib.name: lib.state for lib in settings.libraries},
                     config_file=str(config.config_file()), log_dir=str(config.LOG_DIR), version=__version__)
 
     @app.get("/api/settings")
@@ -204,6 +205,8 @@ def create_app(engine: Engine) -> Flask:
         lib = config.get_library(payload().get("name"))
         if not lib:
             return _error("There is no such library.", 404)
+        if lib.state == "not connected":
+            return _error(f"{lib.name} is not connected, so its folders can't be created. Plug the drive in first.")
         try:
             for folder in (lib.shows_path, lib.movies_path):
                 folder.mkdir(parents=True, exist_ok=True)

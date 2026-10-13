@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import shutil
 from dataclasses import replace
+from unittest import mock
 import subprocess
 import tempfile
 import unittest
@@ -36,19 +37,30 @@ class TempLibraryTestCase(unittest.TestCase):
             downloads_dir=str(self.root / "downloads"), gentle=False))
         for d in (config.STAGING_DIR, config.SHOWS_DIR, config.MOVIES_DIR):
             d.mkdir(parents=True)
+        # Where an unplugged drive was, nothing can be created (like /media/<user> or a missing E:\).
+        self.unplugged: set[str] = set()
+        real_creatable = config._creatable
+        patcher = mock.patch.object(config, "_creatable", lambda path: real_creatable(path) and not any(
+            path.is_relative_to(self.root / name) for name in self.unplugged))
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def add_library(self, name: str, connected: bool = True) -> config.Library:
         """A second library, as on an external drive (connected = its folders exist)."""
         lib = config.Library(name, str(self.root / name / "Shows"), str(self.root / name / "Movies"))
         if connected:
             self.plug_in(lib)
+        else:
+            self.unplugged.add(name)
         config.apply(replace(config.settings, libraries=[*config.settings.libraries, lib]))
         return lib
 
     def unplug(self, lib: config.Library) -> None:
         (self.root / lib.name).rename(self.root / f"{lib.name}.unplugged")
+        self.unplugged.add(lib.name)
 
     def plug_in(self, lib: config.Library) -> None:
+        self.unplugged.discard(lib.name)
         unplugged = self.root / f"{lib.name}.unplugged"
         if unplugged.exists():
             unplugged.rename(self.root / lib.name)

@@ -644,18 +644,21 @@ function ensureOption(select, value) {
     }
 }
 
-function libraryCard(lib, online) {
-    const [badgeClass, badgeText] = online === undefined ? ['bg-secondary', 'not saved yet']
-        : online ? ['bg-success', 'connected'] : ['bg-warning text-dark', 'not connected'];
+function libraryCard(lib, state) {
+    const [badgeClass, badgeText, badgeTitle] = {
+        connected: ['bg-success', 'connected', 'Its folders are there'],
+        'no folders': ['bg-info text-dark', 'folders missing', 'The drive is there, but the library folders are not: press “Create folders”'],
+        'not connected': ['bg-warning text-dark', 'not connected', 'Its folders can’t be found: plug in the drive it is on'],
+    }[state] || ['bg-secondary', 'not saved yet', 'Press Save to add it'];
     const field = (label, cls, value, placeholder) => el('div', {class: cls.startsWith('lib-name') ? 'col-md-5' : 'col-md-6'},
         el('label', {class: 'form-label small mb-1', text: label}),
         el('input', {class: `form-control form-control-sm ${cls}`, value, placeholder, required: '', 'aria-label': label}));
     const card = el('div', {class: 'library-card border rounded p-3'}, el('div', {class: 'row g-2'},
         field('Name', 'lib-name', lib.name, 'e.g. External Drive'),
         el('div', {class: 'col-md-7 d-flex align-items-end justify-content-end gap-2'},
-            el('span', {class: `badge ${badgeClass}`, text: badgeText}),
-            online === false ? el('button', {type: 'button', class: 'btn btn-sm btn-outline-light',
-                title: 'For a drive that is connected but has no library folders yet',
+            el('span', {class: `badge ${badgeClass}`, text: badgeText, title: badgeTitle}),
+            state === 'no folders' ? el('button', {type: 'button', class: 'btn btn-sm btn-outline-light',
+                title: 'Create the Shows and Movies folders of this library',
                 onclick: async () => {
                     const data = await post('/api/libraries/create', {name: lib.name});
                     if (data) { showSettings(data); refreshLibrary(); }
@@ -689,7 +692,7 @@ $('add-library-btn').addEventListener('click', () => {
 
 function showSettings(data) {
     const s = data.settings;
-    $('library-editor').replaceChildren(...s.libraries.map((lib) => libraryCard(lib, data.online[lib.name])));
+    $('library-editor').replaceChildren(...s.libraries.map((lib) => libraryCard(lib, data.states[lib.name])));
     updateLibraryEditor();
     $('welcome-shows').textContent = s.libraries[0].shows_dir;
     $('welcome-movies').textContent = s.libraries[0].movies_dir;

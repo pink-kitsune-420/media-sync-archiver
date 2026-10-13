@@ -83,6 +83,23 @@ class Library:
     def online(self) -> bool:
         return self.shows_path.is_dir() or self.movies_path.is_dir()
 
+    @property
+    def state(self) -> str:
+        """"connected"; "no folders" (the drive is there, but its library folders aren't yet); or
+        "not connected" (there is nowhere to put them, e.g. an unplugged drive)."""
+        if self.online:
+            return "connected"
+        return "no folders" if _creatable(self.shows_path) and _creatable(self.movies_path) else "not connected"
+
+
+def _creatable(path: Path) -> bool:
+    """Whether a missing folder can be created: its nearest existing parent is writable. Where an
+    unplugged drive was, that parent is a system folder such as /media/<user>, or nothing (E:\\)."""
+    for parent in path.parents:
+        if parent.exists():
+            return parent.is_dir() and os.access(parent, os.W_OK)
+    return False
+
 
 def _default_libraries() -> list[Library]:
     return [Library(DEFAULT_LIBRARY_NAME, "~/Videos/YouTube/Shows", "~/Videos/YouTube/Movies")]

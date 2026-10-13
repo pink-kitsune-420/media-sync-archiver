@@ -51,15 +51,22 @@ class WebTests(TempLibraryTestCase):
         self.assertTrue((self.root / "Drive" / "Shows").is_dir())
 
         subscriptions.upsert(Subscription("Course", "https://x/playlist?list=PL", library="Drive", archived=True))
-        (self.root / "Drive").rename(self.root / "Drive.unplugged")
+        self.unplug(config.get_library("Drive"))
         res = self.client.post("/api/action", json={"action": "update", "name": "Course"})
         self.assertEqual(res.status_code, 400)
         self.assertIn("not connected", res.json["error"])
         self.assertIn("Skipped what is on Drive", self.client.post("/api/sync-all", json={"action": "update"}).json["message"])
         self.assertEqual(self.engine.status()["queue"], [])
 
-        res = self.client.post("/api/libraries/create", json={"name": "Drive"})  # e.g. a new, empty drive
-        self.assertEqual(res.json["online"]["Drive"], True)
+        self.assertEqual(self.client.get("/api/settings").json["states"]["Drive"], "not connected")
+        res = self.client.post("/api/libraries/create", json={"name": "Drive"})
+        self.assertEqual(res.status_code, 400)  # nowhere to create them: nothing is created on this computer
+        self.assertFalse((self.root / "Drive").exists())
+
+        self.unplugged.discard("Drive")  # a new, empty drive is plugged in
+        self.assertEqual(self.client.get("/api/settings").json["states"]["Drive"], "no folders")
+        res = self.client.post("/api/libraries/create", json={"name": "Drive"})
+        self.assertEqual(res.json["states"]["Drive"], "connected")
 
     def test_leftover_download_files_can_be_deleted(self):
         leftovers = config.STAGING_DIR / "Old Show"
@@ -106,7 +113,8 @@ class WebTests(TempLibraryTestCase):
         self.assertEqual(res.status_code, 200, res.json)
         self.assertEqual([(t["kind"], t["name"]) for t in self.engine.status()["queue"]], [("move", "Course")])
         self.assertEqual(self.client.get("/api/status").json["libraries"],
-                         [{"name": "Main", "online": True}, {"name": "Drive", "online": True}])
+                         [{"name": "Main", "online": True, "state": "connected"},
+                          {"name": "Drive", "online": True, "state": "connected"}])
 
     def test_folders_organize_the_list(self):
         for name in ("Course", "Other"):

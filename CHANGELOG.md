@@ -3,6 +3,12 @@
 All notable changes to Media Sync Archiver are listed here.
 Version numbers follow [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 
+## [Unreleased]
+
+### Fixed
+- **Create folders** is only offered for a library whose drive is plugged in but has no library
+  folders yet ("folders missing"), not for a drive that isn't connected, where it could only fail.
+
 ## [1.1.1] - 2026-10-12
 
 A tidier library list (folders, search, disconnected drives collapsed) and better tags.

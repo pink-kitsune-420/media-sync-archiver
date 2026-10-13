@@ -70,6 +70,15 @@ class LocateTests(TempLibraryTestCase):
         self.assertEqual((where.status, where.show.library), ("new", "Drive"))
         self.assertEqual(where.show.library_dir, config.get_library("Drive").shows_path / "Course")
 
+    def test_a_drive_without_library_folders_is_told_apart_from_an_unplugged_one(self):
+        drive = self.add_library("Drive", connected=False)
+        self.assertEqual(drive.state, "not connected")
+        self.unplugged.discard("Drive")  # plugged in, but the folders were never created
+        self.assertEqual(drive.state, "no folders")
+        self.assertIn("don't exist yet", library.locate("Course", "playlist", None, "Drive").note)
+        self.plug_in(drive)
+        self.assertEqual(drive.state, "connected")
+
     def test_writing_to_an_unplugged_library_is_refused(self):
         drive = self.add_library("Drive", connected=False)
         with self.assertRaises(library.LibraryOffline):
