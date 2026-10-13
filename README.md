@@ -35,13 +35,14 @@ Please support the creators you archive, and respect their wishes and YouTube's 
 You need **Python 3.10 or newer**, **ffmpeg**, and a **JavaScript runtime** (YouTube requires one to
 unlock all video formats; [Deno](https://deno.com) is recommended, Node.js works too).
 
-| | Linux (Debian/Ubuntu/Mint) | macOS | Windows |
+| | Windows | macOS | Linux (Debian/Ubuntu/Mint) |
 |---|---|---|---|
-| Python | usually installed; also `sudo apt install python3-venv` | `brew install python` | [python.org](https://www.python.org/downloads/) |
-| ffmpeg | `sudo apt install ffmpeg` | `brew install ffmpeg` | `winget install Gyan.FFmpeg` |
-| Deno | `curl -fsSL https://deno.land/install.sh \| sh` | `brew install deno` | `winget install DenoLand.Deno` |
+| Python | [python.org](https://www.python.org/downloads/) | `brew install python` | usually installed; also `sudo apt install python3-venv` |
+| ffmpeg | `winget install Gyan.FFmpeg` | `brew install ffmpeg` | `sudo apt install ffmpeg` |
+| Deno | `winget install DenoLand.Deno` | `brew install deno` | `curl -fsSL https://deno.land/install.sh \| sh` |
 
-Then download Media Sync Archiver, either with git:
+Open a new terminal after installing these, so it finds them. Then download Media Sync Archiver,
+preferably with git (updating is then one command):
 
 ```
 git clone https://github.com/pink-kitsune-420/media-sync-archiver.git
@@ -53,19 +54,19 @@ or with the green **Code › Download ZIP** button on GitHub (unzip it anywhere 
 
 Open a terminal in the `media-sync-archiver` folder and run:
 
-```
-python3 run.py
-```
+| Windows | macOS and Linux |
+|---|---|
+| `py run.py` | `python3 run.py` |
 
-(On Windows: `py run.py`.) The dashboard opens in your browser at http://localhost:8765. Keep the
-terminal open while you use it; press `Ctrl+C` in it to stop the app.
+The dashboard opens in your browser at http://localhost:8765. Keep the terminal open while you use
+it; press `Ctrl+C` in it to stop the app. **On Windows, type `py` wherever this page says `python3`.**
 
 The first start takes a minute: `run.py` creates a private Python environment in a `.venv` folder
 inside the project and installs what the app needs into it. Nothing outside the project folder is
 changed (no system packages, no PATH changes), and deleting the folder removes everything except your
 videos and settings.
 
-**Updating:** download the new version (`git pull`, or a fresh ZIP), then start it with
+**Updating:** in the project folder run `git pull` (or download a fresh ZIP), then start the app with
 `python3 run.py --upgrade`, which also updates yt-dlp. YouTube changes often, so do this whenever
 downloads start failing.
 
@@ -74,17 +75,20 @@ downloads start failing.
 ## Set up Kodi
 
 1. Paste a playlist, channel or video URL into the dashboard and press the download button.
-2. In Kodi, go to **Videos › Files › Add videos** and add two sources:
+2. In Kodi, go to **Videos › Files › Add videos** and add the two folders of your library, choosing
+   *Local information only* as the information provider:
 
-   | Folder (default) | This directory contains | Information provider |
-   |---|---|---|
-   | `~/Videos/YouTube/Shows` | TV shows | Local information only |
-   | `~/Videos/YouTube/Movies` | Movies | Local information only |
+   | Folder | Windows | macOS and Linux | This directory contains |
+   |---|---|---|---|
+   | Shows | `C:\Users\<you>\Videos\YouTube\Shows` | `~/Videos/YouTube/Shows` | TV shows |
+   | Movies | `C:\Users\<you>\Videos\YouTube\Movies` | `~/Videos/YouTube/Movies` | Movies |
 
+   (These are the defaults; Settings › Libraries shows where yours are. `~` means your home folder.)
 3. That's it. New downloads appear after Kodi's next library update. Optionally let the app trigger
    that for you (Settings › Kodi).
 
-If you add more libraries (see below), add each library's Shows and Movies folders the same way.
+If you add more libraries (see [below](#libraries-and-external-drives)), add their Shows and Movies
+folders the same way.
 
 **Jellyfin:** add the same folders as a *Shows* and a *Movies* library. Jellyfin reads the `.nfo` files
 and artwork too.
@@ -93,49 +97,68 @@ and artwork too.
 
 ![The dashboard](docs/images/dashboard.png)
 
+**Buttons on each show, and for the whole library**
+
 | Button | What it does | Talks to YouTube? |
 |---|---|---|
 | **Update** | New videos, plus anything missing from existing ones (subtitles, metadata, chapters, artwork, NFOs). Files that cannot be played are downloaded again. | Only for what is new or missing |
 | **Repair** | Everything Update does, plus reads every file completely to catch corrupt or truncated downloads, and rebuilds the artwork. | Same as Update, plus re-downloads of broken files |
-| **Restore** | Downloads the videos you deleted from the library again. | Only for those videos |
 | **Update all** | Update for every subscribed show, one at a time (movies are skipped: they never get new videos). | Same as Update, for each show |
 | **Repair all** | Repair for everything in the library, including items you've unsubscribed from. | Same as Repair, for each item |
-| **Download again** | Only offered when a show's folder has gone missing: downloads all of it again from scratch. | Yes, everything |
-| **Subscribe** / **Unsubscribe** | In the "…" menu: include a show in Update all, or stop updating it (its files are kept). If its YouTube address isn't known, Subscribe asks for it. | No |
-| **Move to …** | In the "…" menu: moves a show or movie to another library, e.g. onto an external drive. | No |
-| **New folder** | Folders of your own to keep a long list tidy (only the list is sorted; the files don't move). Drag shows onto a folder, or use a show's "…" menu. Folders can be collapsed, renamed and removed; the search box finds things inside them too. | No |
-| **Delete leftovers** | Only offered for files left over from a download that didn't finish, when the show itself isn't in a connected library. | No |
 
-Videos you delete yourself **stay deleted**: Update never downloads them again, and the other episodes
-keep their numbers. The library list shows how many were deleted, and Restore brings them back in
-their old place.
+**In a show's "…" menu**
+
+- **Restore** downloads the videos you deleted again. Otherwise, videos you delete yourself **stay
+  deleted**: Update never downloads them again, and the other episodes keep their numbers.
+- **Subscribe / Unsubscribe** includes a show in Update all, or stops updating it (its files are
+  kept). If its YouTube address isn't known, Subscribe asks for it.
+- **Move to …** moves a show or movie to another library, e.g. onto an external drive.
+- **Folder** puts it in one of your folders (see below).
+
+Only Restore talks to YouTube; the others just change things on your computer.
+
+**Keeping a long list tidy:** **New folder** makes a folder of your own; drag shows onto it, or use a
+show's "…" menu. Folders only sort the list; nothing moves on disk. They can be collapsed, renamed and
+removed, and the **search** box finds things inside them too.
+
+**Only shown when needed:** **Download again**, when a show you downloaded before can't be found
+(it starts over from scratch), and **Delete leftovers**, for files left over from a download that
+didn't finish when the show itself isn't in a connected library.
 
 ## Libraries and external drives
 
 A library is a Shows folder plus a Movies folder. You start with one; add more under
-**Settings › Libraries**, e.g. *External Drive* with `/media/you/ExternalDrive/YouTube/Shows` and
-`/media/you/ExternalDrive/YouTube/Movies`. When you add something, you choose which library it goes in.
+**Settings › Libraries**. When you add something, you choose which library it goes in.
 
-- **Unplugged drives are safe.** A library whose folders can't be found is shown as *not connected*:
-  its shows are collapsed into one line at the bottom of the list (click it to see them), and
-  Update all, Repair all and automatic checks skip them.
-  Nothing is downloaded for them and nothing is created where the drive was. Plug the drive in and
-  they're back.
+For an external drive, use folders on that drive. Where a drive shows up depends on your system:
+
+| | Example for a drive called *My Drive* |
+|---|---|
+| Windows | `E:\YouTube\Shows` and `E:\YouTube\Movies` (with your drive's letter) |
+| macOS | `/Volumes/My Drive/YouTube/Shows` and `/Volumes/My Drive/YouTube/Movies` |
+| Linux | `/media/<you>/My Drive/YouTube/Shows` and `…/Movies` (`/run/media/<you>/…` on some systems) |
+
+Tip: open the drive in your file manager and copy the path from its address bar.
+
+- **Unplugged drives are safe.** While a library's folders can't be found, it is *not connected*: its
+  shows are collapsed into one line at the bottom of the list, and Update all, Repair all and
+  automatic checks skip them. Nothing is downloaded for them and nothing is created where the drive
+  was. Plug the drive in and they're back.
 - **Moving between libraries:** use **Move to …** in a show's "…" menu (or
-  `python3 run.py move NAME --to LIBRARY`). On another drive the files are copied first and the
+  `python3 run.py move NAME --to LIBRARY`). Onto another drive the files are copied first, and the
   originals are only removed once the copy is complete, so an interruption leaves the show as it was.
   In Kodi a moved show appears from its new place, so its watched status starts over.
 - **Moving folders yourself is fine too.** If you move a show's folder to another library, the app
   finds it there and keeps updating it in its new place.
 - **Download once, even then.** If a show you downloaded before can't be found anywhere, it's marked
-  *folder missing* instead of being downloaded again. Use **Download again** only if you really
-  want to start over.
+  *folder missing* instead of being downloaded again.
 - New downloads wait in the app's downloads folder on this computer and are moved into the library
   when they're finished.
 
 ## Command line
 
-Everything the dashboard does also works from a terminal (in the project folder):
+Everything the dashboard does also works from a terminal, in the project folder (Windows: `py`
+instead of `python3`):
 
 ```
 python3 run.py                          open the dashboard
@@ -150,8 +173,8 @@ python3 run.py clean                    remove leftover junk and unfinished down
 python3 run.py config                   where settings, libraries and logs are
 ```
 
-`python3 run.py update` works well as a nightly cron job or scheduled task. The dashboard can also
-check automatically (Settings › Check for new videos).
+`python3 run.py update` works well as a nightly scheduled task (cron, or Task Scheduler on Windows).
+The dashboard can also check automatically (Settings › Check for new videos).
 
 ## How your library is organised
 
@@ -194,30 +217,44 @@ Movies/
 
 ## Settings
 
-Everything can be changed on the dashboard's **Settings** page or in `config.toml`
-(`python3 run.py config` shows where it is: `~/.config/mediasync/` on Linux, `%APPDATA%\mediasync` on Windows,
-`~/Library/Application Support/mediasync` on macOS). Libraries, maximum quality (default 1080p),
-subtitle languages, speed limit, gentle mode, automatic checks, who can open the dashboard, the
-optional Kodi rescan, and a detailed log. Set `MEDIASYNC_HOME` to keep settings and downloads somewhere else (e.g. a USB drive).
+Everything can be changed on the dashboard's **Settings** page, or in its `config.toml` file:
+
+| Windows | macOS | Linux |
+|---|---|---|
+| `%APPDATA%\mediasync` | `~/Library/Application Support/mediasync` | `~/.config/mediasync` |
+
+(`python3 run.py config` shows the exact place.) The settings are:
+
+- **Libraries**, and where unfinished downloads wait
+- **Downloads:** maximum quality (default 1080p), subtitle languages, gentle mode, and automatic
+  checks for new videos (the speed limit is set on the Activity panel)
+- **Dashboard:** who can open it (this computer, or any device on your home network) and its port
+- **Kodi:** optionally make Kodi rescan its library after downloads
+- **Troubleshooting:** a detailed log
+
+To keep settings and downloads somewhere else (e.g. on a USB drive), set the `MEDIASYNC_HOME`
+environment variable to that folder.
 
 ## Troubleshooting
 
 - **Logs:** the terminal only shows the important lines. Everything else (file renames, yt-dlp's
-  messages, full error details) goes to the `logs` folder next to your settings, one file per day
-  (`python3 run.py config` shows where). Switch on *Settings › Detailed log* to also record every
-  YouTube request; attach that day's log file when you report a problem.
-- **Disk full:** downloading pauses by itself. Free up some space, then press *Resume*.
-- **A show says "drive not connected" or "folder missing":** plug in the drive it's on (or move its
-  folder back), then refresh. A new drive without library folders yet: press *Create folders* next
-  to it under Settings › Libraries.
+  messages, full error details) goes to the `logs` folder next to your settings, one file per day.
+  Switch on *Settings › Detailed log* to also record every YouTube request; attach that day's log
+  file when you report a problem.
+- **On Windows, `python3` doesn't work or opens the Microsoft Store:** use `py` instead (it comes with
+  Python from python.org).
 - **"Sign in to confirm you're not a bot", HTTP 403 or 429 errors:** make sure Deno (or Node.js) is
   installed, keep gentle mode on, and update yt-dlp: `python3 run.py --upgrade`.
   YouTube changes often, and a fresh yt-dlp usually fixes it.
-- **Kodi still shows old artwork:** Kodi caches images. Open the item's info and choose *Refresh*.
-- **Open the dashboard from your phone or TV:** set *Who can open this page* to *Any device on my home
-  network* and restart. There is no password, so only do this on a network you trust.
+- **Disk full:** downloading pauses by itself. Free up some space, then press *Resume*.
+- **A show says "drive not connected" or "folder missing":** plug in the drive it's on (or move its
+  folder back). A new drive that doesn't have the library's folders yet shows *folders missing*
+  under Settings › Libraries: press *Create folders* there.
 - **A video is missing subtitles:** YouTube sometimes refuses subtitle downloads for a while; Update
   tries again the next day (waiting longer if it keeps failing) and Repair tries right away.
+- **Kodi still shows old artwork or tags:** Kodi caches them. Open the item's info and choose *Refresh*.
+- **Open the dashboard from your phone or TV:** set *Who can open this page* to *Any device on my home
+  network* and restart. There is no password, so only do this on a network you trust.
 
 ## About this project
 
@@ -238,8 +275,9 @@ python3 run.py --version
 .venv/bin/python -m unittest discover -s tests -t .
 ```
 
-The tests use small generated videos and a fake YouTube, so they run offline (ffmpeg required).
-If you prefer installing it as a regular command, `pipx install .` gives you `mediasync`.
+(On Windows the last line is `.venv\Scripts\python -m unittest discover -s tests -t .`.) The tests
+use small generated videos and a fake YouTube, so they run offline (ffmpeg required). If you prefer
+installing it as a regular command, `pipx install .` gives you `mediasync`.
 
 ## Disclaimer
 
