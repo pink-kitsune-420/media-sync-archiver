@@ -3,20 +3,22 @@
 All notable changes to Media Sync Archiver are listed here.
 Version numbers follow [semantic versioning](https://semver.org): MAJOR.MINOR.PATCH.
 
-## [Unreleased]
+## [1.1.2] - 2026-10-12
+
+Easier sorting of the library list, and clearer library and folder wording.
 
 ### Added
 - A **New folder** button in the library list. Folders stay until you remove them, even when empty.
 - Drag shows and movies onto a folder (or onto "Not in a folder") to sort them; the "…" menu still
   does the same on touch screens.
-  Shows on a disconnected drive can't be sorted until the drive is back (they're listed under the
-  drive meanwhile, and keep their folder).
 
 ### Changed
 - The add form's "Folder name" is now called "Name": it is what the show or movie is called in your
   library (and its folder's name on disk), not one of the list's folders.
 
 ### Fixed
+- Shows on a disconnected drive no longer offer folder options: they're listed under the drive until
+  it is back, and keep their folder meanwhile.
 - **Create folders** is only offered for a library whose drive is plugged in but has no library
   folders yet ("folders missing"), not for a drive that isn't connected, where it could only fail.
 
